@@ -15,7 +15,7 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
   if (cached.records.length) {
     console.log("Loaded %d cached records from %s %s",
       cached.records.length,
-      new Date(cached.ts).toLocaleString(),
+      new Date(cached.at).toLocaleString(),
       cached.complete ? "(complete)" : "(incomplete)",
     );
   }
@@ -131,4 +131,4 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
     modelPrices,
   };
   console.log("Data also available at window.__opencodeStats");
-})();
+})().catch((e) => { console.error("[oc-stats] Fatal console:", e); });

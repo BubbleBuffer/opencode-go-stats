@@ -62,4 +62,4 @@ import { runPipeline } from "./pipeline";
     const target = pageChart || root;
     renderCharts(allRecords, getStats, applyFilter, target);
   }
-})();
+})().catch((e) => { console.error("[oc-stats] Fatal extension:", e); });

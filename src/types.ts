@@ -38,15 +38,24 @@ export interface ModelStats {
   totalCost: number;
 }
 
+export interface TotalBreakdown {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  cacheReadTokens: number;
+  totalCost: number;
+}
+
 export interface StatsResult {
   modelPrices: Record<string, ModelPrices>;
   modelStats: Record<string, ModelStats>;
+  total: TotalBreakdown;
   totalTokens: number;
   totalCostUSD: number;
 }
 
 export interface CacheEntry {
   records: UsageRecord[];
-  ts: number;
+  at: number;
   complete: boolean;
 }
