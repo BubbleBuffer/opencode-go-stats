@@ -9,7 +9,10 @@
   }],
   "browser_specific_settings": {
     "gecko": {
-      "id": "opencode-stats@local.dev"
+      "id": "opencode-stats@local.dev",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
     }
   }
 }
