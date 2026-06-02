@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect } from "vitest";
-import { dateRanges, finiteDate, loadChartJS } from "../packages/ui/charts";
+import { dateRanges, finiteDate } from "../packages/ui/charts";
 import type { UsageRecord } from "../packages/core/types";
 
 const originalWindow = (globalThis as any).window;
@@ -128,26 +128,3 @@ describe("date range: Today UTC boundary", () => {
   });
 });
 
-describe("loadChartJS", () => {
-  it("sets SRI and CORS attributes on the CDN script", async () => {
-    let script: any;
-    (globalThis as any).window = {};
-    (globalThis as any).document = {
-      createElement: () => {
-        script = { remove() {} };
-        return script;
-      },
-      head: {
-        appendChild: (node: any) => {
-          setTimeout(() => node.onerror(new Error("stop after attribute capture")), 0);
-        },
-      },
-    };
-
-    await expect(loadChartJS()).rejects.toBeInstanceOf(Error);
-
-    expect(script.src).toBe("https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js");
-    expect(script.integrity).toBe("sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g");
-    expect(script.crossOrigin).toBe("anonymous");
-  });
-});

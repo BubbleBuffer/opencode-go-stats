@@ -1,7 +1,7 @@
 import type { StatsResult } from "../packages/core/types";
 import { computeStats } from "../packages/stats/stats";
 import { showLoading, injectBaseStyles, buildPricingTable, buildSummaryTable } from "../packages/ui/ui";
-import { loadChartJS, renderCharts, dateRanges } from "../packages/ui/charts";
+import { renderCharts, dateRanges } from "../packages/ui/charts";
 import { runPipeline } from "../packages/pipeline/pipeline";
 
 (async () => {
@@ -59,27 +59,18 @@ import { runPipeline } from "../packages/pipeline/pipeline";
 
   applyFilter(0);
 
-  let Chart: any;
-  try {
-    Chart = await loadChartJS();
-  } catch (e) {
-    console.warn("[oc-stats] Chart.js unavailable, skipping charts:", e);
+  let pageChart: HTMLElement | null = null;
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    pageChart = document.querySelector('[data-slot="chart-container"]') as HTMLElement | null;
+    if (pageChart) break;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  if (!pageChart) {
+    console.error("[oc-stats] Chart container not found on page after 5s");
     return;
   }
-  if (Chart) {
-    let pageChart: HTMLElement | null = null;
-    const deadline = Date.now() + 5000;
-    while (Date.now() < deadline) {
-      pageChart = document.querySelector('[data-slot="chart-container"]') as HTMLElement | null;
-      if (pageChart) break;
-      await new Promise(r => setTimeout(r, 250));
-    }
-    if (!pageChart) {
-      console.error("[oc-stats] Chart container not found on page after 5s");
-      return;
-    }
-    pageChart.innerHTML = "";
-    pageChart.style.cssText = "height:auto;min-height:auto";
-    renderCharts(allRecords, getStats, applyFilter, pageChart);
-  }
+  pageChart.innerHTML = "";
+  pageChart.style.cssText = "height:auto;min-height:auto";
+  renderCharts(allRecords, getStats, applyFilter, pageChart);
 })().catch((e) => { console.error("[oc-stats] Fatal extension:", e); });

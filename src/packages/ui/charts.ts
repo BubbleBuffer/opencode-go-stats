@@ -1,6 +1,9 @@
+import { Chart, BarController, BarElement, CategoryScale, LinearScale, Legend, Tooltip } from "chart.js";
 import type { UsageRecord, ModelStats, StatsResult } from "../core/types";
 import { el, formatUSD } from "./ui";
 import { COST_SCALE, TPM_SCALE } from "../core/constants";
+
+Chart.register(BarController, BarElement, CategoryScale, LinearScale, Legend, Tooltip);
 
 type Metric = "cost" | "tokens" | "requests" | "efficiency" | "share";
 
@@ -52,43 +55,12 @@ export const dateRanges: DateRange[] = [
   { label: "1y", fn: r => Date.now() - finiteDate(r.timeCreated) < 365 * 864e5 },
 ];
 
-export async function loadChartJS(): Promise<any> {
-  if ((window as any).Chart) return (window as any).Chart;
-  return new Promise<any>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
-    script.integrity = "sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g";
-    script.crossOrigin = "anonymous";
-
-    const timeout = setTimeout(() => {
-      script.remove();
-      reject(new Error("Chart.js CDN load timed out after 10s"));
-    }, 10_000);
-
-    script.onload = () => {
-      clearTimeout(timeout);
-      resolve((window as any).Chart);
-    };
-
-    script.onerror = (err) => {
-      clearTimeout(timeout);
-      console.warn("[oc-stats] Chart.js CDN load failed:", err);
-      reject(err);
-    };
-
-    document.head.appendChild(script);
-  });
-}
-
 export function renderCharts(
   allRecords: UsageRecord[],
   getStats: () => StatsResult | null,
   applyFilter: (idx: number) => void,
   target: HTMLElement,
 ) {
-  const $Chart = (window as any).Chart;
-  if (!$Chart) return;
-
   let currentStats = getStats();
   if (!currentStats) return;
 
@@ -252,35 +224,35 @@ export function renderCharts(
 
   function renderCostChart() {
     const { days, buckets } = dailyBuckets();
-    const datasets: any[] = modelDailyDatasets(days, buckets, recordCostUSD);
-    return new $Chart(canvas, {
+    const datasets = modelDailyDatasets(days, buckets, recordCostUSD);
+    return new Chart(canvas, {
       type: "bar",
-      data: { labels: days, datasets },
+      data: { labels: days, datasets: datasets as any },
       options: dailyOptions("usd"),
     });
   }
 
   function renderTokensChart() {
     const { days, buckets } = dailyBuckets();
-    return new $Chart(canvas, {
+    return new Chart(canvas, {
       type: "bar",
-      data: { labels: days, datasets: modelDailyDatasets(days, buckets, recordTokenTotal) },
+      data: { labels: days, datasets: modelDailyDatasets(days, buckets, recordTokenTotal) as any },
       options: dailyOptions("tokens"),
     });
   }
 
   function renderRequestsChart() {
     const { days, buckets } = dailyBuckets();
-    return new $Chart(canvas, {
+    return new Chart(canvas, {
       type: "bar",
-      data: { labels: days, datasets: modelDailyDatasets(days, buckets, () => 1) },
+      data: { labels: days, datasets: modelDailyDatasets(days, buckets, () => 1) as any },
       options: dailyOptions("count"),
     });
   }
 
   function renderEfficiencyChart() {
     const stats = modelStatsSorted("efficiency").filter(s => tokenTotal(s) > 0);
-    return new $Chart(canvas, {
+    return new Chart(canvas, {
       type: "bar",
       data: {
         labels: stats.map(s => s.model),
@@ -291,7 +263,7 @@ export function renderCharts(
           borderColor: STROKE_COLORS[0],
           borderWidth: 1,
         }],
-      },
+      } as any,
       options: horizontalOptions("usd"),
     });
   }
@@ -299,7 +271,7 @@ export function renderCharts(
   function renderShareChart() {
     const stats = modelStatsSorted("cost");
     const total = currentStats!.totalCostUSD;
-    return new $Chart(canvas, {
+    return new Chart(canvas, {
       type: "bar",
       data: {
         labels: stats.map(s => s.model),
@@ -311,7 +283,7 @@ export function renderCharts(
           borderWidth: 1,
           costUSD: stats.map(s => s.totalCost / COST_SCALE),
         }],
-      },
+      } as any,
       options: horizontalOptions("percent"),
     });
   }
@@ -331,7 +303,7 @@ export function renderCharts(
         x: { stacked: true, ticks: tickStyle({ maxTicksLimit: 12 }), grid: { display: false }, border: { color: chartColor("border") } },
         y: { stacked: true, ticks: tickStyle({ callback: tickFormatter(unit) }), grid: { color: chartColor("grid") }, border: { color: chartColor("border") } },
       },
-    };
+    } as any;
   }
 
   function horizontalOptions(unit: "usd" | "percent") {
@@ -345,7 +317,7 @@ export function renderCharts(
         x: { ticks: tickStyle({ callback: tickFormatter(unit) }), grid: { color: chartColor("grid") }, border: { color: chartColor("border") } },
         y: { ticks: tickStyle(), grid: { display: false }, border: { color: chartColor("border") } },
       },
-    };
+    } as any;
   }
 
   function commonPlugins(unit: "usd" | "tokens" | "count" | "percent") {
