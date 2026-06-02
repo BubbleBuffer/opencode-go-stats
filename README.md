@@ -1,6 +1,6 @@
 # OpenCode Stats
 
-Browser extension and console script that adds per-model token/cost analytics to [opencode.ai](https://opencode.ai) workspace usage pages.
+Browser extension, userscript, and console script that add per-model token/cost analytics to [opencode.ai](https://opencode.ai) workspace usage pages.
 
 ## Features
 
