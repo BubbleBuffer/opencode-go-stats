@@ -1,25 +1,94 @@
-# OpenCode Stats
+# OpenCode Go Stats
 
-Browser extension, userscript, and console script that add per-model token/cost analytics to [opencode.ai](https://opencode.ai) workspace usage pages.
+Adds token and cost breakdowns to [opencode.ai](https://opencode.ai) workspace usage pages.
 
-## Features
+There are three ways to run it:
 
-- **Per-Model Summary Table** — Requests, input/output/reasoning/cache tokens, total cost, and $/1M tokens for each model
-- **Estimated Pricing Table** — Fits per-unit prices from usage records (input, output, cache read $/1M tokens) using linear regression
-- **Interactive Charts** — Date range filter (All, Today, 7d, 30d, 90d, 1y) with switchable metrics:
-  - Cost (daily stacked bar)
-  - Tokens (daily stacked bar)
-  - Requests (daily stacked bar)
-  - Efficiency ($/1M tokens per model)
-  - Share (cost share per model)
-- **Session Breakdown** — Top 20 most expensive sessions logged to console
-- **Caching** — Usage records are cached in localStorage so subsequent visits only fetch newly created records
+| Version | Best for | Output |
+|---|---|---|
+| Browser extension | Keeping stats on the usage page | Inline tables and charts |
+| Userscript | Getting the same dashboard through a userscript manager | Inline tables and charts |
+| Console script | One-off inspection from DevTools | `console.table()` reports and session totals |
 
-## Screenshots
+The extension and userscript share the same dashboard code. The console script is separate: it prints a report, exposes raw data on `window.__opencodeStats`, and includes the session breakdown.
 
-| Tables | Charts |
+## Tables
+
+![Estimated pricing and per-model summary tables](docs/tables.png)
+
+The dashboard adds two tables above the normal usage list.
+
+| Table | What it shows |
 |---|---|
-| ![Tables](docs/image-1.png) | ![Charts](docs/image-2.png) |
+| Estimated Pricing | Per-model input, output, and cache-read prices in dollars per 1M tokens. These are fitted from usage records that include cost data. |
+| Per-Model Summary | Requests, input tokens, output tokens, reasoning tokens, cache reads, total cost, and effective dollars per 1M tokens for each model. |
+
+The summary table also includes the fitted pricing columns when pricing can be estimated for the model.
+
+## Charts
+
+The dashboard has range filters for `All`, `Today`, `7d`, `30d`, `90d`, and `1y`. The selected range updates the tables and the chart together.
+
+Three of the chart modes are daily stacked bars, split by model:
+
+| Chart | What it answers |
+|---|---|
+| Cost | How much each model cost per day. |
+| Tokens | How many input, output, reasoning, and cache-read tokens each model used per day, summed into one token total. |
+| Requests | How many requests each model handled per day. |
+
+Two chart modes compare models across the selected range:
+
+| Chart | What it answers |
+|---|---|
+| Efficiency | Which models were most expensive per 1M tokens. This is a horizontal bar chart sorted by effective dollars per 1M tokens. |
+| Share | Which models accounted for the largest share of total cost. This is a horizontal bar chart with percent share and dollar cost in the tooltip. |
+
+Example chart views:
+
+| Cost | Tokens | Efficiency |
+|---|---|---|
+| ![Daily cost chart](docs/cost_chart.png) | ![Daily token chart](docs/token_chart.png) | ![Average price per million chart](docs/avg_price_per_million_chart.png) |
+
+## Console Script
+
+![Console script output](docs/console_script.png)
+
+`pull-stats.js` is for quick checks without installing anything. Open an opencode.ai workspace usage page, paste the script into the browser console, and run it.
+
+It prints:
+
+| Section | What it contains |
+|---|---|
+| Estimated Pricing | The same fitted per-model prices used by the dashboard. |
+| Per-Model Summary | Request, token, cost, and effective price totals by model. |
+| Grand Total | Workspace-wide token and cost totals. |
+| Top Sessions by Cost | The 20 most expensive model/session pairs. This is console-only. |
+
+After it finishes, the parsed records and computed summaries are available as `window.__opencodeStats`.
+
+## Install
+
+### Browser Extension
+
+Load the `extension/` directory as an unpacked extension.
+
+| Browser | Steps |
+|---|---|
+| Chrome | Open Extensions, enable Developer mode, choose Load unpacked, then select `extension/`. |
+| Firefox | Open `about:debugging`, choose This Firefox, choose Load Temporary Add-on, then select `extension/manifest.json`. |
+
+The extension runs on `https://opencode.ai/workspace/*/usage`.
+
+### Userscript
+
+Install `opencode-stats.user.js` with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/), or another userscript manager.
+
+The userscript runs on the same usage pages as the extension and renders the same dashboard.
+
+### Console Script
+
+Open an opencode.ai workspace usage page, paste the contents of `pull-stats.js` into DevTools, and run it.
 
 ## Build
 
@@ -28,28 +97,15 @@ npm install
 npm run build
 ```
 
-`npm run build` produces three scripts from the same shared source modules (`src/parse.ts`, `src/stats.ts`, `src/pricing.ts`, `src/cache.ts`):
+`npm run build` produces:
 
-### Extension (`extension/content.js`) — full visual dashboard
+| Output | Source entry | Purpose |
+|---|---|---|
+| `extension/content.js` | `src/extension.ts` | Browser extension content script. |
+| `opencode-stats.user.js` | `src/extension.ts` | Userscript dashboard. |
+| `pull-stats.js` | `src/console.ts` | Console-only report. |
 
-Load the `extension/` directory as an unpacked extension:
-
-- **Chrome**: Extensions → Load unpacked → select `extension/`
-- **Firefox**: `about:debugging` → This Firefox → Load Temporary Add-on → select `extension/manifest.json`
-
-The extension automatically injects into `https://opencode.ai/workspace/*/usage` pages and renders:
-- Estimated Pricing and Per-Model Summary tables inline on the page
-- Interactive Chart.js dashboard with date range filters and five switchable chart types
-
-### Console script (`pull-stats.js`) — one-off console report
-
-Open an opencode.ai workspace usage page, paste the contents of `pull-stats.js` into the browser console, and run it.
-
-Outputs everything to the console as plain `console.table()` calls — no visual UI, no charts. Includes a Top 20 Sessions by Cost breakdown that the extension does not show. Useful for a quick look without installing an extension.
-
-### Userscript (`opencode-stats.user.js`) — no-install dashboard
-
-Install with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/), or any userscript manager. Same visual dashboard as the browser extension, but installs in one click from the script URL — no extension loading needed.
+Shared parsing, pricing, stats, and cache logic lives under `src/`.
 
 ## Release
 
@@ -57,17 +113,21 @@ Install with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](http
 npm run release
 ```
 
-Builds the extension and produces `extension.zip` ready for upload to the Chrome Web Store or sideloading.
+This builds the extension and writes `extension.zip`.
 
-## Type-check
+## Type Check
 
 ```bash
 npm run check
 ```
 
-## How it works
+## How It Works
 
-1. Fetches all usage pages from the workspace via the opencode.ai internal `/_server` endpoint
-2. Deduplicates and merges with locally cached records
-3. Estimates per-model pricing by solving a linear system (normal equations) from records that include cost
-4. Renders tables and Chart.js visualizations inline on the page
+1. Reads the workspace ID from the current usage page URL.
+2. Fetches usage pages through opencode.ai's internal `/_server` endpoint.
+3. Deduplicates records and merges them with records cached in `localStorage`.
+4. Computes per-model request, token, and cost totals.
+5. Estimates per-model token prices by solving a linear system from records with cost data.
+6. Renders the dashboard or prints the console report, depending on the script being used.
+
+Pricing is estimated from your recorded usage, so a model may not show fitted prices until there is enough cost-bearing data for that model.
