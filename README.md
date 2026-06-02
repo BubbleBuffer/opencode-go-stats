@@ -54,7 +54,7 @@ Example chart views:
 
 ![Console script output](docs/console_script.png)
 
-`pull-stats.js` is for quick checks without installing anything. Open an opencode.ai workspace usage page, paste the script into the browser console, and run it.
+`dist/pull-stats.js` is for quick checks without installing anything. Open an opencode.ai workspace usage page, paste the script into the browser console, and run it.
 
 It prints:
 
@@ -73,24 +73,24 @@ After it finishes, the parsed records and computed summaries are available as `w
 
 ### Browser Extension
 
-Load the `extension/` directory as an unpacked extension.
+Load the `dist/extension/` directory as an unpacked extension.
 
 | Browser | Steps |
 |---|---|
-| Chrome | Open Extensions, enable Developer mode, choose Load unpacked, then select `extension/`. |
-| Firefox | Open `about:debugging`, choose This Firefox, choose Load Temporary Add-on, then select `extension/manifest.json`. |
+| Chrome | Open Extensions, enable Developer mode, choose Load unpacked, then select `dist/extension/`. |
+| Firefox | Open `about:debugging`, choose This Firefox, choose Load Temporary Add-on, then select `dist/extension/manifest.json`. |
 
 The extension runs on `https://opencode.ai/workspace/*/usage`.
 
 ### Userscript
 
-Install `opencode-stats.user.js` with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/), or another userscript manager.
+Install `dist/opencode-stats.user.js` with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/), or another userscript manager.
 
 The userscript runs on the same usage pages as the extension and renders the same dashboard.
 
 ### Console Script
 
-Open an opencode.ai workspace usage page, paste the contents of `pull-stats.js` into DevTools, and run it.
+Open an opencode.ai workspace usage page, paste the contents of `dist/pull-stats.js` into DevTools, and run it.
 
 ## Build
 
@@ -103,11 +103,11 @@ npm run build
 
 | Output | Source entry | Purpose |
 |---|---|---|
-| `extension/content.js` | `src/extension.ts` | Browser extension content script. |
-| `opencode-stats.user.js` | `src/extension.ts` | Userscript dashboard. |
-| `pull-stats.js` | `src/console.ts` | Console-only report. |
+| `dist/extension/content.js` | `src/entries/extension.ts` | Browser extension content script. |
+| `dist/opencode-stats.user.js` | `src/entries/extension.ts` | Userscript dashboard. |
+| `dist/pull-stats.js` | `src/entries/console.ts` | Console-only report. |
 
-Shared parsing, pricing, stats, and cache logic lives under `src/`.
+All output goes to `dist/`.
 
 ## Release
 
@@ -125,10 +125,10 @@ npm run check
 
 ### API Authentication
 
-The `FN_ID` constant (see `src/constants.ts`) is the server function identifier used by opencode.ai's
+The `FN_ID` constant (see `src/packages/core/constants.ts`) is the server function identifier used by opencode.ai's
 internal API gateway to route usage-history requests. It is a public routing key, not a secret,
 and is embedded in the opencode.ai web client. If the upstream API changes, this value must be
-updated in `src/constants.ts`.
+updated in `src/packages/core/constants.ts`.
 
 ## How It Works
 
