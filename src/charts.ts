@@ -1,5 +1,5 @@
 import type { UsageRecord, ModelStats, StatsResult } from "./types";
-import { el } from "./ui";
+import { el, formatUSD } from "./ui";
 import { COST_SCALE, TPM_SCALE } from "./constants";
 
 type Metric = "cost" | "tokens" | "requests" | "efficiency" | "share";
@@ -352,7 +352,7 @@ export function renderCharts(
   function tooltipLabel(ctx: any, unit: "usd" | "tokens" | "count" | "percent") {
     const label = ctx.dataset.label || "Value";
     const value = Number(ctx.raw || 0);
-    if (unit === "usd") return label + ": " + formatUSD(value);
+    if (unit === "usd") return label + ": " + formatUSD(value, value >= 10 ? 2 : 4);
     if (unit === "tokens") return label + ": " + Math.round(value).toLocaleString() + " tokens";
     if (unit === "count") return label + ": " + Math.round(value).toLocaleString() + " requests";
     const costUSD = Array.isArray(ctx.dataset.costUSD) ? ctx.dataset.costUSD[ctx.dataIndex] : null;
@@ -381,10 +381,6 @@ export function renderCharts(
     if (Math.abs(value) >= 1_000_000) return (value / 1_000_000).toFixed(1) + "M";
     if (Math.abs(value) >= 1_000) return (value / 1_000).toFixed(1) + "K";
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
-  }
-
-  function formatUSD(value: number) {
-    return "$" + value.toFixed(value >= 10 ? 2 : 4);
   }
 
   function round(value: number) {

@@ -109,8 +109,11 @@ export function injectBaseStyles() {
   document.head.appendChild(style);
 }
 
-function formatUSD(amount: number): string {
-  return "$" + amount.toFixed(6);
+export function formatUSD(value: number, precision?: number): string {
+  if (precision === undefined) {
+    precision = 6;
+  }
+  return "$" + value.toFixed(precision);
 }
 
 export function buildPricingTable(modelPrices: Record<string, ModelPrices>): HTMLElement {

@@ -73,7 +73,7 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
 
   console.log("\n--- \u{1F3C1} Grand Total ---");
   console.log({
-    "Total Requests": total.inputTokens > 0 ? "[see per-model]" : "0",
+    "Total Requests": String(Object.values(modelStats).reduce((sum, s) => sum + s.requests, 0)),
     "Total Input Tokens": total.inputTokens.toLocaleString(),
     "Total Output Tokens": total.outputTokens.toLocaleString(),
     "Total Reasoning Tokens": total.reasoningTokens.toLocaleString(),
