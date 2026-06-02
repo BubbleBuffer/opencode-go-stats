@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "build": "node build.js",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "release": "npm run build && cd extension && zip -r ../extension.zip manifest.json content.js"
   },
   "devDependencies": {
     "esbuild": "^0.24.0",

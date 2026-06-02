@@ -1,7 +1,29 @@
-import type { UsageRecord, ModelStats, ModelPrices, StatsResult } from "./types";
+import type { UsageRecord, ModelStats, StatsResult } from "./types";
 import { el } from "./ui";
 
-const COLORS = ["#007aff","#ff9f0a","#30d158","#ff375f","#5e5ce6","#64d2ff","#ffd60a","#bf5af2","#ff6482","#32d74b"];
+type Metric = "cost" | "tokens" | "requests" | "efficiency" | "share";
+
+const FILL_COLORS = [
+  "rgba(196, 181, 253, 0.45)",
+  "rgba(221, 214, 254, 0.45)",
+  "rgba(186, 230, 253, 0.42)",
+  "rgba(187, 247, 208, 0.38)",
+  "rgba(254, 240, 138, 0.38)",
+  "rgba(254, 202, 202, 0.38)",
+  "rgba(191, 219, 254, 0.42)",
+  "rgba(226, 232, 240, 0.38)",
+];
+
+const STROKE_COLORS = [
+  "rgba(167, 139, 250, 0.85)",
+  "rgba(196, 181, 253, 0.85)",
+  "rgba(125, 211, 252, 0.82)",
+  "rgba(134, 239, 172, 0.78)",
+  "rgba(250, 204, 21, 0.72)",
+  "rgba(252, 165, 165, 0.78)",
+  "rgba(147, 197, 253, 0.82)",
+  "rgba(203, 213, 225, 0.72)",
+];
 
 export interface DateRange { label: string; fn: (r: UsageRecord) => boolean }
 
@@ -38,216 +60,332 @@ export function renderCharts(
   if (!currentStats) return;
 
   let activeRange = 0;
+  let activeMetric: Metric = "cost";
+  let chartInst: any = null;
 
-  const filterBar = el("div", { id: "oc-filter-bar" });
-  const fStyle = el("style");
-  fStyle.textContent = `
-    #oc-filter-bar { display: flex; gap: var(--space-1); margin-bottom: var(--space-3); }
-    #oc-filter-bar button { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); color: var(--color-text-muted); cursor: pointer; padding: var(--space-1) var(--space-2-5); font-size: var(--font-size-xs); font-family: var(--font-sans); }
-    #oc-filter-bar button:hover { color: var(--color-text); border-color: var(--color-accent); }
-    #oc-filter-bar button.active { background: var(--color-accent); color: #fff; border-color: var(--color-accent); }
+  if (!document.getElementById("oc-chart-dashboard-style")) {
+    const chartStyle = el("style");
+    chartStyle.id = "oc-chart-dashboard-style";
+    chartStyle.textContent = `
+    #oc-chart-dashboard { display: flex; flex-direction: column; gap: var(--space-4); }
+    #oc-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+    #oc-range-control { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+    .oc-select-control { display: flex; align-items: center; gap: var(--space-2); color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--font-size-sm); }
+    #oc-chart-controls button,
+    #oc-chart-controls select { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); color: var(--color-text); cursor: pointer; font-family: var(--font-mono); font-size: var(--font-size-sm); line-height: 1; min-height: 2.125rem; padding: 0 var(--space-3); }
+    #oc-chart-controls button:hover,
+    #oc-chart-controls select:hover { border-color: var(--color-text-muted); }
+    #oc-chart-controls button.active { background: var(--color-bg); border-color: var(--color-text-muted); color: var(--color-text); }
+    #oc-chart-card { border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); padding: var(--space-8); }
+    #oc-chart-canvas-wrap { height: 400px; position: relative; }
+    @media (max-width: 700px) {
+      #oc-chart-card { padding: var(--space-4); }
+      #oc-chart-canvas-wrap { min-height: 340px; }
+      .oc-select-control { width: 100%; justify-content: space-between; }
+      #oc-chart-controls select { flex: 1; }
+    }
   `;
-  document.head.appendChild(fStyle);
+    document.head.appendChild(chartStyle);
+  }
 
-  const filterBtns = dateRanges.map(r => {
+  const dashboard = el("div", { id: "oc-chart-dashboard" });
+  const controls = el("div", { id: "oc-chart-controls" });
+  const rangeControl = el("div", { id: "oc-range-control" });
+  const metricSelect = el("select") as HTMLSelectElement;
+  const canvas = document.createElement("canvas");
+  const chartWrap = el("div", { id: "oc-chart-canvas-wrap" });
+  const chartCard = el("div", { id: "oc-chart-card" });
+
+  canvas.id = "oc-chart-canvas";
+  chartWrap.appendChild(canvas);
+  chartCard.appendChild(chartWrap);
+
+  const filterBtns = dateRanges.map((r, idx) => {
     const btn = el("button", { text: r.label });
     btn.addEventListener("click", () => {
-      activeRange = dateRanges.indexOf(r);
+      activeRange = idx;
       applyFilter(activeRange);
       currentStats = getStats();
-      showChart(chartIdx);
-      updateActiveBtn();
+      updateActiveRange();
+      renderActiveChart();
     });
-    filterBar.appendChild(btn);
+    rangeControl.appendChild(btn);
     return btn;
   });
 
-  function updateActiveBtn() {
+  addOption(metricSelect, "cost", "Cost");
+  addOption(metricSelect, "tokens", "Tokens");
+  addOption(metricSelect, "requests", "Requests");
+  addOption(metricSelect, "efficiency", "Efficiency");
+  addOption(metricSelect, "share", "Share");
+  metricSelect.value = activeMetric;
+  metricSelect.addEventListener("change", () => {
+    activeMetric = metricSelect.value as Metric;
+    renderActiveChart();
+  });
+  controls.appendChild(rangeControl);
+  controls.appendChild(el("label", { className: "oc-select-control" }, ["Metric", metricSelect]));
+  dashboard.appendChild(controls);
+  dashboard.appendChild(chartCard);
+  target.appendChild(dashboard);
+
+  updateActiveRange();
+  renderActiveChart();
+
+  function addOption(select: HTMLSelectElement, value: string, label: string) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
+  }
+
+  function updateActiveRange() {
     for (let i = 0; i < filterBtns.length; i++) {
       filterBtns[i].classList.toggle("active", i === activeRange);
     }
   }
-  updateActiveBtn();
 
-  const navStyle = el("style");
-  navStyle.textContent = `
-    #oc-chart-nav { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
-    #oc-chart-nav button { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); color: var(--color-text); cursor: pointer; padding: var(--space-1-5) var(--space-3); font-size: var(--font-size-sm); }
-    #oc-chart-nav button:hover { border-color: var(--color-accent); }
-    #oc-chart-nav button:disabled { opacity: 0.3; cursor: default; }
-    #oc-chart-label { flex: 1; text-align: center; font-size: var(--font-size-sm); color: var(--color-text-muted); font-family: var(--font-sans); }
-  `;
-  document.head.appendChild(navStyle);
+  function renderActiveChart() {
+    if (!currentStats) return;
+    if (chartInst) chartInst.destroy();
+    try {
+      if (activeMetric === "cost") chartInst = renderCostChart();
+      else if (activeMetric === "tokens") chartInst = renderTokensChart();
+      else if (activeMetric === "requests") chartInst = renderRequestsChart();
+      else if (activeMetric === "efficiency") chartInst = renderEfficiencyChart();
+      else chartInst = renderShareChart();
+    } catch (e) {
+      console.warn("Chart render error:", e);
+    }
+  }
 
-  const nav = el("div", { id: "oc-chart-nav" });
-  const prevBtn = el("button", { text: "\u2190" });
-  const nextBtn = el("button", { text: "\u2192" });
-  const label = el("span", { id: "oc-chart-label" });
-  nav.appendChild(prevBtn);
-  nav.appendChild(label);
-  nav.appendChild(nextBtn);
+  function filteredRecords() {
+    return allRecords.filter(dateRanges[activeRange].fn);
+  }
 
-  const canvas = document.createElement("canvas");
-  canvas.id = "oc-chart-canvas";
-  const chartWrap = el("div");
-  chartWrap.style.cssText = "height:400px;position:relative";
-  chartWrap.appendChild(canvas);
+  function modelName(r: UsageRecord) {
+    return r.model || "unknown";
+  }
 
-  const chartSection = el("div", { id: "opencode-stats-section" });
-  chartSection.appendChild(filterBar);
-  chartSection.appendChild(nav);
-  chartSection.appendChild(chartWrap);
+  function recordCostUSD(r: UsageRecord) {
+    return (r.cost || 0) / 1e8;
+  }
 
-  (target as HTMLElement).appendChild(chartSection);
+  function recordTokenTotal(r: UsageRecord) {
+    return (r.inputTokens || 0) + (r.outputTokens || 0) + (r.reasoningTokens || 0) + (r.cacheReadTokens || 0);
+  }
 
-  let chartIdx = 0;
-  let chartInst: any = null;
+  function modelStatsSorted(sortBy: "cost" | "efficiency" = "cost") {
+    const stats = Object.values(currentStats!.modelStats);
+    return stats.sort((a, b) => sortValue(b, sortBy) - sortValue(a, sortBy));
+  }
 
-  function renderCostByModel() {
-    const s = currentStats!;
-    const byModel = Object.entries(s.modelStats).sort((a, b) => b[1].totalCost - a[1].totalCost);
-    const ep = s.modelPrices;
+  function sortValue(stats: ModelStats, sortBy: "cost" | "efficiency") {
+    if (sortBy === "cost") return stats.totalCost;
+    const tokens = stats.inputTokens + stats.outputTokens + stats.reasoningTokens + stats.cacheReadTokens;
+    return tokens > 0 ? (stats.totalCost / 1e8) / (tokens / 1_000_000) : 0;
+  }
+
+  function orderedModels() {
+    const seen = new Set<string>();
+    for (const stats of modelStatsSorted()) seen.add(stats.model);
+    for (const record of filteredRecords()) seen.add(modelName(record));
+    return [...seen];
+  }
+
+  function dailyBuckets() {
+    const buckets: Record<string, UsageRecord[]> = {};
+    for (const record of filteredRecords()) {
+      if (!record.timeCreated) continue;
+      const day = new Date(record.timeCreated).toISOString().slice(0, 10);
+      if (!buckets[day]) buckets[day] = [];
+      buckets[day].push(record);
+    }
+    const days = Object.keys(buckets).sort();
+    return { days, buckets };
+  }
+
+  function modelDailyDatasets(days: string[], buckets: Record<string, UsageRecord[]>, valueFor: (r: UsageRecord) => number) {
+    return orderedModels().map((model, i) => ({
+      label: model,
+      data: days.map(day => round(buckets[day].filter(r => modelName(r) === model).reduce((sum, r) => sum + valueFor(r), 0))),
+      backgroundColor: FILL_COLORS[i % FILL_COLORS.length],
+      borderColor: STROKE_COLORS[i % STROKE_COLORS.length],
+      borderWidth: 1,
+      stack: "main",
+    }));
+  }
+
+  function renderCostChart() {
+    const { days, buckets } = dailyBuckets();
+    const datasets: any[] = modelDailyDatasets(days, buckets, recordCostUSD);
     return new $Chart(canvas, {
       type: "bar",
-      data: {
-        labels: byModel.map(([m]) => m),
-        datasets: [
-          { label: "Input", data: byModel.map(([m, sm]) => +((sm.inputTokens / 1e6) * (ep[m]?.inputTokens || 0)).toFixed(6)), backgroundColor: COLORS[0] },
-          { label: "Output", data: byModel.map(([m, sm]) => +((sm.outputTokens / 1e6) * (ep[m]?.outputTokens || 0)).toFixed(6)), backgroundColor: COLORS[1] },
-          { label: "Cache Rd", data: byModel.map(([m, sm]) => +((sm.cacheReadTokens / 1e6) * (ep[m]?.cacheReadTokens || 0)).toFixed(6)), backgroundColor: COLORS[3] },
-          { label: "Actual", data: byModel.map(([, sm]) => +(sm.totalCost / 1e8).toFixed(6)), type: "line", borderColor: COLORS[4], borderWidth: 2, pointRadius: 4, pointBackgroundColor: COLORS[4], fill: false, tension: 0.1 },
-        ],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false, indexAxis: "y",
-        plugins: {
-          legend: { position: "bottom", labels: { color: "#a1a1a6", font: { family: "IBM Plex Mono", size: 11 } } },
-          tooltip: {
-            callbacks: {
-              label: (ctx: any) => {
-                const [, sm] = byModel[ctx.dataIndex];
-                if (ctx.dataset.label === "Actual")
-                  return "Actual: $" + (+ctx.raw).toFixed(4) + " | " + sm.requests + " reqs | " + (sm.inputTokens + sm.outputTokens).toLocaleString() + " tok";
-                return ctx.dataset.label + ": $" + (+ctx.raw).toFixed(4);
-              },
-            },
-          },
-        },
-        scales: {
-          x: { stacked: true, ticks: { color: "#6e6e73", callback: (v: any) => "$" + v }, grid: { color: "#2c2c2e" } },
-          y: { stacked: true, ticks: { color: "#a1a1a6", font: { size: 10 } }, grid: { display: false } },
-        },
-      },
+      data: { labels: days, datasets },
+      options: dailyOptions("usd"),
     });
   }
 
-  function renderDailyCost() {
-    const s = currentStats!;
-    const models = Object.keys(s.modelStats);
-    const filtered = allRecords.filter(dateRanges[activeRange].fn);
-
-    const daily: Record<string, Record<string, number>> = {};
-    for (const r of filtered) {
-      if (!r.timeCreated) continue;
-      const d = new Date(r.timeCreated).toISOString().slice(0, 10);
-      if (!daily[d]) daily[d] = {};
-      daily[d][r.model!] = (daily[d][r.model!] || 0) + (r.cost || 0) / 1e8;
-    }
-    const days = Object.keys(daily).sort();
-
-    const cumLine: number[] = [];
-    let c = 0;
-    for (const d of days) {
-      for (const m of models) c += daily[d]?.[m] || 0;
-      cumLine.push(+c.toFixed(6));
-    }
-
+  function renderTokensChart() {
+    const { days, buckets } = dailyBuckets();
     return new $Chart(canvas, {
       type: "bar",
-      data: {
-        labels: days,
-        datasets: [
-          ...models.map((m, i) => ({
-            label: m,
-            data: days.map(d => +(daily[d]?.[m] || 0).toFixed(6)),
-            backgroundColor: COLORS[i % COLORS.length],
-            stack: "cost",
-          })),
-          { label: "Cumulative", data: cumLine, type: "line", borderColor: "#ffffff", backgroundColor: "#ffffff22", borderWidth: 2, fill: true, pointRadius: 0, tension: 0.1, yAxisID: "y1", stack: "cum" },
-        ],
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "bottom", labels: { color: "#a1a1a6", font: { family: "IBM Plex Mono", size: 11 } } },
-          tooltip: {
-            callbacks: {
-              label: (ctx: any) => {
-                if (ctx.dataset.yAxisID === "y1") return "Total: $" + (+ctx.raw).toFixed(2);
-                const dayTotal = days.length ? models.reduce((sum: number, m: string) => sum + (daily[days[ctx.dataIndex]]?.[m] || 0), 0) : 0;
-                return ctx.dataset.label + ": $" + (+ctx.raw).toFixed(4) + (dayTotal > 0 ? " (" + ((+ctx.raw / dayTotal) * 100).toFixed(0) + "% of day)" : "");
-              },
-            },
-          },
-        },
-        scales: {
-          x: { stacked: true, ticks: { color: "#6e6e73", maxTicksLimit: 14, font: { size: 9 } }, grid: { display: false } },
-          y: { stacked: true, position: "left", ticks: { color: "#6e6e73", callback: (v: any) => "$" + v }, grid: { color: "#2c2c2e" } },
-          y1: { position: "right", ticks: { color: "#ffffff", callback: (v: any) => "$" + v.toFixed(2) }, grid: { display: false } },
-        },
-      },
+      data: { labels: days, datasets: modelDailyDatasets(days, buckets, recordTokenTotal) },
+      options: dailyOptions("tokens"),
     });
   }
 
-  function renderCostShare() {
-    const s = currentStats!;
-    const sorted = Object.entries(s.modelStats).sort((a, b) => b[1].totalCost - a[1].totalCost);
+  function renderRequestsChart() {
+    const { days, buckets } = dailyBuckets();
     return new $Chart(canvas, {
-      type: "doughnut",
+      type: "bar",
+      data: { labels: days, datasets: modelDailyDatasets(days, buckets, () => 1) },
+      options: dailyOptions("count"),
+    });
+  }
+
+  function renderEfficiencyChart() {
+    const stats = modelStatsSorted("efficiency").filter(s => tokenTotal(s) > 0);
+    return new $Chart(canvas, {
+      type: "bar",
       data: {
-        labels: sorted.map(([m]) => m),
+        labels: stats.map(s => s.model),
         datasets: [{
-          data: sorted.map(([, sm]) => +(sm.totalCost / 1e8).toFixed(6)),
-          backgroundColor: COLORS,
-          borderColor: "#0c0c0e",
-          borderWidth: 2,
+          label: "$ / 1M Tokens",
+          data: stats.map(s => round((s.totalCost / 1e8) / (tokenTotal(s) / 1_000_000))),
+          backgroundColor: FILL_COLORS[0],
+          borderColor: STROKE_COLORS[0],
+          borderWidth: 1,
         }],
       },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "bottom", labels: { color: "#a1a1a6", font: { family: "IBM Plex Mono", size: 11 }, padding: 12 } },
-          tooltip: {
-            callbacks: {
-              label: (ctx: any) => {
-                const [, sm] = sorted[ctx.dataIndex];
-                const pct = s.totalCostUSD > 0 ? ((ctx.raw / s.totalCostUSD) * 100).toFixed(1) : "0";
-                const tok = (sm.inputTokens + sm.outputTokens + sm.reasoningTokens + sm.cacheReadTokens).toLocaleString();
-                return ctx.label + ": $" + (+ctx.raw).toFixed(4) + " (" + pct + "%) | " + tok + " tok | " + sm.requests + " reqs";
-              },
-            },
-          },
-        },
-      },
+      options: horizontalOptions("usd"),
     });
   }
 
-  const charts = [
-    { name: "Cost by Model", render: renderCostByModel },
-    { name: "Daily Cost + Cumulative", render: renderDailyCost },
-    { name: "Cost Share", render: renderCostShare },
-  ];
-
-  function showChart(i: number) {
-    if (chartInst) chartInst.destroy();
-    try { chartInst = charts[i].render(); } catch (e) { console.warn("Chart render error:", e); }
-    label.textContent = charts[i].name;
-    prevBtn.disabled = i === 0;
-    nextBtn.disabled = i === charts.length - 1;
-    chartIdx = i;
+  function renderShareChart() {
+    const stats = modelStatsSorted("cost");
+    const total = currentStats!.totalCostUSD;
+    return new $Chart(canvas, {
+      type: "bar",
+      data: {
+        labels: stats.map(s => s.model),
+        datasets: [{
+          label: "Cost Share",
+          data: stats.map(s => total > 0 ? round(((s.totalCost / 1e8) / total) * 100) : 0),
+          backgroundColor: FILL_COLORS[1],
+          borderColor: STROKE_COLORS[1],
+          borderWidth: 1,
+          costUSD: stats.map(s => s.totalCost / 1e8),
+        }],
+      },
+      options: horizontalOptions("percent"),
+    });
   }
 
-  prevBtn.addEventListener("click", () => { if (chartIdx > 0) showChart(chartIdx - 1); });
-  nextBtn.addEventListener("click", () => { if (chartIdx < charts.length - 1) showChart(chartIdx + 1); });
-  showChart(0);
+  function tokenTotal(stats: ModelStats) {
+    return stats.inputTokens + stats.outputTokens + stats.reasoningTokens + stats.cacheReadTokens;
+  }
+
+  function dailyOptions(unit: "usd" | "tokens" | "count") {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: commonPlugins(unit),
+      scales: {
+        x: { stacked: true, ticks: tickStyle({ maxTicksLimit: 12 }), grid: { display: false }, border: { color: chartColor("border") } },
+        y: { stacked: true, ticks: tickStyle({ callback: tickFormatter(unit) }), grid: { color: chartColor("grid") }, border: { color: chartColor("border") } },
+      },
+    };
+  }
+
+  function horizontalOptions(unit: "usd" | "percent") {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      indexAxis: "y",
+      plugins: commonPlugins(unit),
+      scales: {
+        x: { ticks: tickStyle({ callback: tickFormatter(unit) }), grid: { color: chartColor("grid") }, border: { color: chartColor("border") } },
+        y: { ticks: tickStyle(), grid: { display: false }, border: { color: chartColor("border") } },
+      },
+    };
+  }
+
+  function commonPlugins(unit: "usd" | "tokens" | "count" | "percent") {
+    return {
+      legend: {
+        position: "bottom",
+        labels: {
+          color: chartColor("muted"),
+          boxHeight: 10,
+          boxWidth: 18,
+          padding: 16,
+          font: { family: fontFamily(), size: 12 },
+        },
+      },
+      tooltip: {
+        filter: (item: any) => Number(item.raw || 0) !== 0,
+        callbacks: {
+          label: (ctx: any) => tooltipLabel(ctx, unit),
+        },
+      },
+    };
+  }
+
+  function tooltipLabel(ctx: any, unit: "usd" | "tokens" | "count" | "percent") {
+    const label = ctx.dataset.label || "Value";
+    const value = Number(ctx.raw || 0);
+    if (unit === "usd") return label + ": " + formatUSD(value);
+    if (unit === "tokens") return label + ": " + Math.round(value).toLocaleString() + " tokens";
+    if (unit === "count") return label + ": " + Math.round(value).toLocaleString() + " requests";
+    const costUSD = Array.isArray(ctx.dataset.costUSD) ? ctx.dataset.costUSD[ctx.dataIndex] : null;
+    return label + ": " + value.toFixed(1) + "%" + (typeof costUSD === "number" ? " (" + formatUSD(costUSD) + ")" : "");
+  }
+
+  function tickStyle(extra: Record<string, any> = {}) {
+    return {
+      color: chartColor("muted"),
+      font: { family: fontFamily(), size: 11 },
+      ...extra,
+    };
+  }
+
+  function tickFormatter(unit: "usd" | "tokens" | "count" | "percent") {
+    return (v: number | string) => {
+      const value = Number(v);
+      if (unit === "usd") return "$" + compactNumber(value);
+      if (unit === "tokens") return compactNumber(value);
+      if (unit === "percent") return value + "%";
+      return compactNumber(value);
+    };
+  }
+
+  function compactNumber(value: number) {
+    if (Math.abs(value) >= 1_000_000) return (value / 1_000_000).toFixed(1) + "M";
+    if (Math.abs(value) >= 1_000) return (value / 1_000).toFixed(1) + "K";
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+
+  function formatUSD(value: number) {
+    return "$" + value.toFixed(value >= 10 ? 2 : 4);
+  }
+
+  function round(value: number) {
+    return +value.toFixed(6);
+  }
+
+  function fontFamily() {
+    return cssVar("--font-mono") || "IBM Plex Mono, monospace";
+  }
+
+  function chartColor(kind: "muted" | "grid" | "border") {
+    if (kind === "muted") return cssVar("--color-text-muted") || "#6b7280";
+    if (kind === "grid") return cssVar("--color-border-muted") || "rgba(148, 163, 184, 0.25)";
+    return cssVar("--color-border") || "rgba(148, 163, 184, 0.45)";
+  }
+
+  function cssVar(name: string) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
 }

@@ -1,2 +1,5 @@
 node_modules
 dist
+pull-stats.js
+extension/content.js
+extension.zip

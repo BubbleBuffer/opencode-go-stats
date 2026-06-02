@@ -18,7 +18,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Record
 }
 
 export function buildSection(title: string, desc: string, rows: (string | Node)[][], cols: string[]): HTMLElement {
-  const section = el("div", { id: "opencode-stats-section" });
+  const section = el("section", { id: "opencode-stats-section" });
   const titleDiv = el("div", { id: "opencode-stats-title" }, [
     el("h2", { text: title }),
     el("p", { text: desc }),
@@ -52,7 +52,7 @@ export function buildSection(title: string, desc: string, rows: (string | Node)[
 }
 
 export function showLoading(): HTMLElement {
-  const root = el("div", { id: "opencode-stats-root" });
+  const root = el("section", { id: "opencode-stats-root" });
   const title = el("div", { id: "opencode-stats-title" }, [
     el("h2", { text: "Stats" }),
     el("p", { text: "Loading usage data..." }),
@@ -67,7 +67,6 @@ export function injectBaseStyles() {
   style.textContent = `
     #opencode-stats-root {
       display: flex; flex-direction: column; gap: var(--space-8);
-      margin-top: var(--space-8);
     }
     #opencode-stats-section {
       display: flex; flex-direction: column; gap: var(--space-8);

@@ -60,9 +60,6 @@ import { loadChartJS, renderCharts, dateRanges } from "./charts";
 
   root.innerHTML = "";
 
-  const tableContainer = el("div", { id: "oc-table-container" });
-  root.appendChild(tableContainer);
-
   let currentStats: StatsResult | null = null;
 
   function applyFilter(rangeIdx: number) {
@@ -70,9 +67,9 @@ import { loadChartJS, renderCharts, dateRanges } from "./charts";
     const filtered = rng ? allRecords.filter(rng.fn) : allRecords;
     currentStats = computeStats(filtered);
 
-    tableContainer.innerHTML = "";
-    tableContainer.appendChild(buildPricingTable(currentStats.modelPrices));
-    tableContainer.appendChild(buildSummaryTable(
+    root.innerHTML = "";
+    root.appendChild(buildPricingTable(currentStats.modelPrices));
+    root.appendChild(buildSummaryTable(
       currentStats.modelStats,
       currentStats.modelPrices,
       currentStats.totalTokens,
@@ -89,7 +86,7 @@ import { loadChartJS, renderCharts, dateRanges } from "./charts";
   const Chart = await loadChartJS();
   if (Chart) {
     const pageChart = document.querySelector('[data-slot="chart-container"]') as HTMLElement | null;
-    if (pageChart) pageChart.innerHTML = "";
+    if (pageChart) { pageChart.innerHTML = ""; pageChart.style.cssText = "height:auto;min-height:auto"; }
     const target = pageChart || root;
     renderCharts(allRecords, getStats, applyFilter, target);
   }
