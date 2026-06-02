@@ -1,9 +1,8 @@
-import type { UsageRecord, StatsResult } from "./types";
-import { fetchPage } from "./parse";
+import type { StatsResult } from "./types";
 import { computeStats } from "./stats";
-import { loadCache, saveCache, mergeAndSort } from "./cache";
-import { showLoading, injectBaseStyles, buildPricingTable, buildSummaryTable, el } from "./ui";
+import { showLoading, injectBaseStyles, buildPricingTable, buildSummaryTable } from "./ui";
 import { loadChartJS, renderCharts, dateRanges } from "./charts";
+import { runPipeline } from "./pipeline";
 
 (async () => {
   if (document.getElementById("opencode-stats-root")) return;
@@ -22,34 +21,7 @@ import { loadChartJS, renderCharts, dateRanges } from "./charts";
   if (usageSection) sections.insertBefore(root, usageSection);
   else sections.appendChild(root);
 
-  const cached = loadCache(CACHE_KEY);
-  const cachedIds = new Set(cached.records.map((r: UsageRecord) => r.id));
-  const wasComplete = cached.complete === true;
-
-  const allRecords: UsageRecord[] = [];
-  let page = 0;
-  let emptyCount = 0;
-  let reachedEnd = false;
-
-  while (true) {
-    const records = await fetchPage(WS_ID, FN_ID, page);
-    if (records.length === 0) {
-      emptyCount++;
-      if (emptyCount >= 2) { reachedEnd = true; break; }
-      page++;
-      continue;
-    }
-    emptyCount = 0;
-    const newRecords = records.filter((r: UsageRecord) => !cachedIds.has(r.id!));
-    if (wasComplete && newRecords.length === 0) break;
-    allRecords.push(...newRecords);
-    page++;
-  }
-
-  const merged = mergeAndSort(allRecords, cached.records);
-  saveCache(CACHE_KEY, merged, wasComplete || reachedEnd);
-  allRecords.length = 0;
-  allRecords.push(...merged);
+  const allRecords = await runPipeline(WS_ID, CACHE_KEY, FN_ID);
 
   console.log("Total records:", allRecords.length);
 
@@ -64,7 +36,7 @@ import { loadChartJS, renderCharts, dateRanges } from "./charts";
 
   function applyFilter(rangeIdx: number) {
     const rng = dateRanges[rangeIdx];
-    const filtered = rng ? allRecords.filter(rng.fn) : allRecords;
+    const filtered = allRecords.filter(rng.fn);
     currentStats = computeStats(filtered);
 
     root.innerHTML = "";

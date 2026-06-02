@@ -1,8 +1,7 @@
-import type { UsageRecord } from "./types";
-import { fetchAllPages } from "./parse";
 import { computeStats } from "./stats";
-import { loadCache, saveCache, mergeAndSort } from "./cache";
+import { loadCache } from "./cache";
 import { COST_SCALE, TPM_SCALE } from "./constants";
+import { runPipeline } from "./pipeline";
 
 const WS_ID = window.location.pathname.split("/")[2];
 const FN_ID = "bfd684bfc2e4eed05cd0b518f5e4eafd3f3376e3938abb9e536e7c03df831e5c";
@@ -11,46 +10,26 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
 (async () => {
   console.group("\u{1F4CA} OpenCode Go Usage Stats");
   console.log("Workspace:", WS_ID);
-  console.log("Fetching all usage pages...");
 
   const cached = loadCache(CACHE_KEY);
-  const cachedIds = new Set(cached.records.map((r: UsageRecord) => r.id).filter((id): id is string => !!id));
-  const wasComplete = cached.complete === true;
   if (cached.records.length) {
     console.log("Loaded %d cached records from %s %s",
       cached.records.length,
       new Date(cached.ts).toLocaleString(),
-      wasComplete ? "(complete)" : "(incomplete)",
+      cached.complete ? "(complete)" : "(incomplete)",
     );
   }
 
-  console.log("  Fetching pages in parallel batches (8 at a time) ...");
-  const { records: newRecords, reachedEnd } = await fetchAllPages(WS_ID, FN_ID, cachedIds, wasComplete, 8);
-  console.log("  Got %d new records", newRecords.length);
-
-  const allRecords: UsageRecord[] = newRecords;
-
-  const merged = mergeAndSort(allRecords, cached.records);
-
-  const seen2 = new Set<string>();
-  const deduped = merged.filter(r => {
-    if (!r.id) return true;
-    if (seen2.has(r.id)) return false;
-    seen2.add(r.id);
-    return true;
-  });
-
-  saveCache(CACHE_KEY, deduped, wasComplete || reachedEnd);
-  allRecords.length = 0;
-  allRecords.push(...deduped);
-
-  console.log("Total records:", allRecords.length);
+  console.log("Fetching all usage pages...");
+  const allRecords = await runPipeline(WS_ID, CACHE_KEY, FN_ID);
 
   if (allRecords.length === 0) {
-    console.log("No usage data found.");
+    console.log("No usage records found.");
     console.groupEnd();
     return;
   }
+
+  console.log("Total records:", allRecords.length);
 
   const { modelPrices, modelStats, total, totalTokens, totalCostUSD } = computeStats(allRecords);
 
