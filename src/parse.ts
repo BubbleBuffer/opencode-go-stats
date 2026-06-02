@@ -1,10 +1,24 @@
-import type { UsageRecord } from "./types";
+import type { RawApiRecord, UsageRecord } from "./types";
 
 export function serialize(prefix: string) {
   const ts = Date.now();
   const postfix = "e" + Math.random().toString(36).slice(2, 10);
   const instance = prefix + ":" + ts + ":" + postfix;
   return { instance, ts, postfix };
+}
+
+function normalizeRecords(allRecords: RawApiRecord[]): UsageRecord[] {
+  return allRecords.map(r => ({
+    id: r.id!,
+    timeCreated: r.timeCreated || "",
+    model: r.model || "unknown",
+    inputTokens: r.inputTokens ?? 0,
+    outputTokens: r.outputTokens ?? 0,
+    cacheReadTokens: r.cacheReadTokens ?? 0,
+    cacheCreationTokens: r.cacheCreationTokens ?? 0,
+    cost: r.cost ?? 0,
+    reasoningTokens: 0,
+  }));
 }
 
 export async function fetchAllPages(
@@ -14,7 +28,7 @@ export async function fetchAllPages(
   wasComplete: boolean,
   batchSize = 8,
 ): Promise<{ records: UsageRecord[]; reachedEnd: boolean }> {
-  const allRecords: UsageRecord[] = [];
+  const allRecords: RawApiRecord[] = [];
   let page = 0;
   let consecutiveEmpties = 0;
   let consecutiveErrors = 0;
@@ -29,7 +43,7 @@ export async function fetchAllPages(
       batchPages.map(p =>
         fetchPage(wsId, fnId, p).catch(e => {
           console.warn("[oc-stats] fetch error on page", p, ":", e instanceof Error ? e.message : e);
-          return { records: [] as UsageRecord[], error: true };
+          return { records: [] as RawApiRecord[], error: true };
         })
       ),
     );
@@ -41,7 +55,7 @@ export async function fetchAllPages(
         consecutiveErrors++;
         if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
           console.error("[oc-stats] too many consecutive fetch errors, stopping pagination");
-          return { records: allRecords, reachedEnd: false };
+          return { records: normalizeRecords(allRecords), reachedEnd: false };
         }
         continue;
       }
@@ -51,7 +65,7 @@ export async function fetchAllPages(
 
       if (records.length === 0) {
         consecutiveEmpties++;
-        if (consecutiveEmpties >= 2) return { records: allRecords, reachedEnd: true };
+        if (consecutiveEmpties >= 2) return { records: normalizeRecords(allRecords), reachedEnd: true };
       } else {
         consecutiveEmpties = 0;
         const newRecords = records.filter(r => !cachedIds.has(r.id!));
@@ -59,7 +73,7 @@ export async function fetchAllPages(
           if (r.id) cachedIds.add(r.id);
         }
         if (wasComplete && newRecords.length === 0 && i === 0 && page === 0) {
-          return { records: allRecords, reachedEnd: false };
+          return { records: normalizeRecords(allRecords), reachedEnd: false };
         }
         allRecords.push(...newRecords);
       }
@@ -67,10 +81,10 @@ export async function fetchAllPages(
 
     page += batchSize;
   }
-  return { records: allRecords, reachedEnd: false };
+  return { records: normalizeRecords(allRecords), reachedEnd: false };
 }
 
-export async function fetchPage(wsId: string, fnId: string, pageIndex: number): Promise<{ records: UsageRecord[]; error?: boolean }> {
+export async function fetchPage(wsId: string, fnId: string, pageIndex: number): Promise<{ records: RawApiRecord[]; error?: boolean }> {
   const { instance } = serialize("server-fn");
   const payload = {
     t: { t: 9, i: 0, l: 2, a: [{ t: 1, s: wsId }, { t: 0, s: pageIndex }], o: 0 },
@@ -96,7 +110,7 @@ export async function fetchPage(wsId: string, fnId: string, pageIndex: number): 
     const refs = parseRefs(text);
     const arrayStr = dataMatch[1];
     const recordRx = /\{[^}]+\}/g;
-    const records: UsageRecord[] = [];
+    const records: RawApiRecord[] = [];
     let m;
     while ((m = recordRx.exec(arrayStr)) !== null) {
       try {
@@ -113,19 +127,19 @@ export async function fetchPage(wsId: string, fnId: string, pageIndex: number): 
   }
 }
 
-function parseRefs(text: string): Record<number, any> {
-  const refs: Record<number, any> = {};
+function parseRefs(text: string): Record<number, string | number | null> {
+  const refs: Record<number, string | number | null> = {};
   const refRx = /\$R\[(\d+)\]=(new Date\("[^"]+"\)|null|[+-]?\d+(?:\.\d+)?|"[^"]*")/g;
   let m;
   while ((m = refRx.exec(text)) !== null) {
     const idx = parseInt(m[1], 10);
-    let val = m[2];
+    let val: string | number | null = m[2];
     if (val === "null") refs[idx] = null;
     else if (/^[+-]?\d+$/.test(val)) refs[idx] = parseInt(val, 10);
     else if (/^[+-]?\d+\.\d+$/.test(val)) refs[idx] = parseFloat(val);
     else if (val.startsWith("new Date(")) {
       const dateMatch = val.match(/"([^"]+)"/);
-      if (dateMatch) refs[idx] = new Date(dateMatch[1]);
+      if (dateMatch) refs[idx] = new Date(dateMatch[1]).toISOString();
     } else if (val.startsWith('"')) {
       refs[idx] = val.slice(1, -1);
     } else {
@@ -135,19 +149,19 @@ function parseRefs(text: string): Record<number, any> {
   return refs;
 }
 
-function parseRecordObj(str: string, refs: Record<number, any>): Record<string, any> {
-  const obj: Record<string, any> = {};
+function parseRecordObj(str: string, refs: Record<number, string | number | null>): RawApiRecord {
+  const obj: RawApiRecord = {};
   const propRx = /(\w+):(\$R\[(\d+)\]|"[^"]*"|null|[+-]?\d+(?:\.\d+)?)/g;
   let m;
   while ((m = propRx.exec(str)) !== null) {
     const key = m[1];
-    let val: any;
+    let val: string | number | null = null;
     if (m[2] === "null") val = null;
     else if (m[2].startsWith('"')) val = m[2].slice(1, -1);
     else if (/^[+-]?\d+$/.test(m[2])) val = parseInt(m[2], 10);
     else if (/^[+-]?\d+\.\d+$/.test(m[2])) val = parseFloat(m[2]);
     else if (m[3] !== undefined) val = refs[parseInt(m[3], 10)];
-    obj[key] = val;
+    obj[key as keyof RawApiRecord] = val as any;
   }
   return obj;
 }

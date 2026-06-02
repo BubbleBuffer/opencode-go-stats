@@ -1,21 +1,27 @@
-export interface UsageRecord {
+/** Raw record from the server API before validation. Fields may be missing/null. */
+export interface RawApiRecord {
   id?: string;
   timeCreated?: string;
-  sessionID?: string;
   model?: string;
-  provider?: string;
-  inputTokens?: number;
-  outputTokens?: number;
-  reasoningTokens?: number;
-  cacheReadTokens?: number;
-  cacheWrite1hTokens?: number;
-  cacheWrite5mTokens?: number;
-  cost?: number;
-  inputCost?: number;
-  outputCost?: number;
-  reasoningCost?: number;
-  cacheReadCost?: number;
-  [key: string]: any;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cacheReadTokens?: number | null;
+  cacheCreationTokens?: number | null;
+  cost?: number | null;
+}
+
+/** Validated usage record with required fields present. */
+export interface UsageRecord {
+  id: string;
+  timeCreated: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  cost: number;
+  reasoningTokens: number;
+  sessionID?: string;
 }
 
 export interface ModelPrices {
@@ -25,7 +31,7 @@ export interface ModelPrices {
   cacheReadTokens?: number;
   cacheWrite1hTokens?: number;
   cacheWrite5mTokens?: number;
-  [key: string]: number | undefined;
+  [model: string]: number | undefined;
 }
 
 export interface ModelStats {
