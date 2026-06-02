@@ -69,6 +69,8 @@ After it finishes, the parsed records and computed summaries are available as `w
 
 ## Install
 
+> **Prerequisite:** Build the extension/userscript first with `npm install && npm run build`.
+
 ### Browser Extension
 
 Load the `extension/` directory as an unpacked extension.
@@ -120,6 +122,13 @@ This builds the extension and writes `extension.zip`.
 ```bash
 npm run check
 ```
+
+### API Authentication
+
+The `FN_ID` constant (`bfd684bf...`) is the server function identifier used by opencode.ai's
+internal API gateway to route usage-history requests. It is a public routing key, not a secret,
+and is embedded in the opencode.ai web client. If the upstream API changes, this value must be
+updated in both `src/console.ts` and `src/extension.ts`.
 
 ## How It Works
 
