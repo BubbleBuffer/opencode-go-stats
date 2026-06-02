@@ -1,5 +1,6 @@
 import type { UsageRecord, ModelStats, StatsResult } from "./types";
 import { el } from "./ui";
+import { COST_SCALE, TPM_SCALE } from "./constants";
 
 type Metric = "cost" | "tokens" | "requests" | "efficiency" | "share";
 
@@ -168,7 +169,7 @@ export function renderCharts(
   }
 
   function recordCostUSD(r: UsageRecord) {
-    return (r.cost || 0) / 1e8;
+    return (r.cost || 0) / COST_SCALE;
   }
 
   function recordTokenTotal(r: UsageRecord) {
@@ -183,7 +184,7 @@ export function renderCharts(
   function sortValue(stats: ModelStats, sortBy: "cost" | "efficiency") {
     if (sortBy === "cost") return stats.totalCost;
     const tokens = stats.inputTokens + stats.outputTokens + stats.reasoningTokens + stats.cacheReadTokens;
-    return tokens > 0 ? (stats.totalCost / 1e8) / (tokens / 1_000_000) : 0;
+    return tokens > 0 ? (stats.totalCost / COST_SCALE) / (tokens / TPM_SCALE) : 0;
   }
 
   function orderedModels() {
@@ -252,7 +253,7 @@ export function renderCharts(
         labels: stats.map(s => s.model),
         datasets: [{
           label: "$ / 1M Tokens",
-          data: stats.map(s => round((s.totalCost / 1e8) / (tokenTotal(s) / 1_000_000))),
+          data: stats.map(s => round((s.totalCost / COST_SCALE) / (tokenTotal(s) / TPM_SCALE))),
           backgroundColor: FILL_COLORS[0],
           borderColor: STROKE_COLORS[0],
           borderWidth: 1,
@@ -271,11 +272,11 @@ export function renderCharts(
         labels: stats.map(s => s.model),
         datasets: [{
           label: "Cost Share",
-          data: stats.map(s => total > 0 ? round(((s.totalCost / 1e8) / total) * 100) : 0),
+          data: stats.map(s => total > 0 ? round(((s.totalCost / COST_SCALE) / total) * 100) : 0),
           backgroundColor: FILL_COLORS[1],
           borderColor: STROKE_COLORS[1],
           borderWidth: 1,
-          costUSD: stats.map(s => s.totalCost / 1e8),
+          costUSD: stats.map(s => s.totalCost / COST_SCALE),
         }],
       },
       options: horizontalOptions("percent"),

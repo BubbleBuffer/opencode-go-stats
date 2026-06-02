@@ -1,5 +1,6 @@
-import type { UsageRecord, ModelStats, StatsResult } from "./types";
+import type { UsageRecord, ModelStats, TotalBreakdown, StatsResult } from "./types";
 import { estimateModelPrices } from "./pricing";
+import { COST_SCALE } from "./constants";
 
 export function computeStats(records: UsageRecord[]): StatsResult {
   const models = [...new Set(records.map(r => r.model || "unknown"))];
@@ -43,7 +44,7 @@ export function computeStats(records: UsageRecord[]): StatsResult {
   }, { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, totalCost: 0 });
 
   const totalTokens = total.inputTokens + total.outputTokens + total.reasoningTokens + total.cacheReadTokens;
-  const totalCostUSD = total.totalCost / 1e8;
+  const totalCostUSD = total.totalCost / COST_SCALE;
 
-  return { modelPrices, modelStats, totalTokens, totalCostUSD };
+  return { modelPrices, modelStats, total, totalTokens, totalCostUSD };
 }

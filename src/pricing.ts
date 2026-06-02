@@ -1,4 +1,5 @@
 import type { UsageRecord, ModelPrices } from "./types";
+import { COST_SCALE, TPM_SCALE } from "./constants";
 
 function solveLinearSystem(A: number[][], b: number[]): number[] | null {
   const n = b.length;
@@ -35,8 +36,8 @@ export function estimateModelPrices(records: UsageRecord[]): ModelPrices | null 
   const ATb: number[] = new Array(n).fill(0);
 
   for (const r of paid) {
-    const costUSD = r.cost! / 1e8;
-    const x = active.map(f => ((r[f as keyof UsageRecord] as number) || 0) / 1_000_000);
+    const costUSD = r.cost! / COST_SCALE;
+    const x = active.map(f => ((r[f as keyof UsageRecord] as number) || 0) / TPM_SCALE);
     for (let i = 0; i < n; i++) {
       ATb[i] += x[i] * costUSD;
       for (let j = 0; j < n; j++) ATA[i][j] += x[i] * x[j];

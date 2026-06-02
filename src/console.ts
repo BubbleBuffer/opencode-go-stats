@@ -1,7 +1,8 @@
 import type { UsageRecord } from "./types";
-import { fetchPage } from "./parse";
+import { fetchAllPages } from "./parse";
 import { computeStats } from "./stats";
 import { loadCache, saveCache, mergeAndSort } from "./cache";
+import { COST_SCALE, TPM_SCALE } from "./constants";
 
 const WS_ID = window.location.pathname.split("/")[2];
 const FN_ID = "bfd684bfc2e4eed05cd0b518f5e4eafd3f3376e3938abb9e536e7c03df831e5c";
@@ -13,7 +14,7 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
   console.log("Fetching all usage pages...");
 
   const cached = loadCache(CACHE_KEY);
-  const cachedIds = new Set(cached.records.map((r: UsageRecord) => r.id));
+  const cachedIds = new Set(cached.records.map((r: UsageRecord) => r.id).filter((id): id is string => !!id));
   const wasComplete = cached.complete === true;
   if (cached.records.length) {
     console.log("Loaded %d cached records from %s %s",
@@ -23,35 +24,25 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
     );
   }
 
-  const allRecords: UsageRecord[] = [];
-  let page = 0;
-  let emptyCount = 0;
-  let reachedEnd = false;
+  console.log("  Fetching pages in parallel batches (8 at a time) ...");
+  const { records: newRecords, reachedEnd } = await fetchAllPages(WS_ID, FN_ID, cachedIds, wasComplete, 8);
+  console.log("  Got %d new records", newRecords.length);
 
-  while (true) {
-    console.log("  Fetching page %d ...", page);
-    const records = await fetchPage(WS_ID, FN_ID, page);
-    if (records.length === 0) {
-      emptyCount++;
-      if (emptyCount >= 2) { reachedEnd = true; break; }
-      page++;
-      continue;
-    }
-    emptyCount = 0;
-    const newRecords = records.filter((r: UsageRecord) => !cachedIds.has(r.id!));
-    if (wasComplete && newRecords.length === 0) {
-      console.log("    Page %d already fully cached — caught up!", page);
-      break;
-    }
-    allRecords.push(...newRecords);
-    console.log("    Got %d new records (total new: %d)", newRecords.length, allRecords.length);
-    page++;
-  }
+  const allRecords: UsageRecord[] = newRecords;
 
   const merged = mergeAndSort(allRecords, cached.records);
-  saveCache(CACHE_KEY, merged, wasComplete || reachedEnd);
+
+  const seen2 = new Set<string>();
+  const deduped = merged.filter(r => {
+    if (!r.id) return true;
+    if (seen2.has(r.id)) return false;
+    seen2.add(r.id);
+    return true;
+  });
+
+  saveCache(CACHE_KEY, deduped, wasComplete || reachedEnd);
   allRecords.length = 0;
-  allRecords.push(...merged);
+  allRecords.push(...deduped);
 
   console.log("Total records:", allRecords.length);
 
@@ -61,7 +52,7 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
     return;
   }
 
-  const { modelPrices, modelStats, totalTokens, totalCostUSD } = computeStats(allRecords);
+  const { modelPrices, modelStats, total, totalTokens, totalCostUSD } = computeStats(allRecords);
 
   if (Object.keys(modelPrices).length > 0) {
     console.log("\n--- \u{1F52C} Estimated Pricing ($/1M tokens) ---");
@@ -76,8 +67,8 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
   console.log("\n--- \u{1F4C8} Per-Model Summary ---");
   const modelRows = Object.values(modelStats).map(s => {
     const tot = s.inputTokens + s.outputTokens + s.reasoningTokens + s.cacheReadTokens;
-    const costUSD = s.totalCost / 1e8;
-    const ppm = tot > 0 ? "$" + (costUSD / (tot / 1_000_000)).toFixed(4) : "N/A";
+    const costUSD = s.totalCost / COST_SCALE;
+    const ppm = tot > 0 ? "$" + (costUSD / (tot / TPM_SCALE)).toFixed(4) : "N/A";
     const ep = modelPrices[s.model];
     const row: Record<string, any> = {
       Model: s.model,
@@ -99,16 +90,7 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
   });
   console.table(modelRows);
 
-  const total = Object.values(modelStats).reduce((acc, s) => {
-    acc.inputTokens += s.inputTokens;
-    acc.outputTokens += s.outputTokens;
-    acc.reasoningTokens += s.reasoningTokens;
-    acc.cacheReadTokens += s.cacheReadTokens;
-    acc.totalCost += s.totalCost;
-    return acc;
-  }, { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, totalCost: 0 });
-
-  const overallPPM = totalTokens > 0 ? "$" + (totalCostUSD / (totalTokens / 1_000_000)).toFixed(4) : "N/A";
+  const overallPPM = totalTokens > 0 ? "$" + (totalCostUSD / (totalTokens / TPM_SCALE)).toFixed(4) : "N/A";
 
   console.log("\n--- \u{1F3C1} Grand Total ---");
   console.log({
@@ -155,7 +137,7 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
         "Input Tok": s.inputTokens.toLocaleString(),
         "Output Tok": s.outputTokens.toLocaleString(),
         "Reason Tok": s.reasoningTokens.toLocaleString(),
-        "Total Cost": "$" + (s.totalCost / 1e8).toFixed(6),
+        "Total Cost": "$" + (s.totalCost / COST_SCALE).toFixed(6),
       })),
   );
 

@@ -1,4 +1,5 @@
 import type { ModelPrices, ModelStats, StatsResult } from "./types";
+import { COST_SCALE, TPM_SCALE } from "./constants";
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Record<string, any>, children?: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -132,8 +133,8 @@ export function buildSummaryTable(
   const cols = ["Model", "Requests", "Input Tok", "Output Tok", "Reason Tok", "Cache Read", "Cost (USD)", "$/1M Tok"];
   const rows = Object.values(modelStats).map(s => {
     const tot = s.inputTokens + s.outputTokens + s.reasoningTokens + s.cacheReadTokens;
-    const costUSD = s.totalCost / 1e8;
-    const ppm = tot > 0 ? "$" + (costUSD / (tot / 1_000_000)).toFixed(4) : "N/A";
+    const costUSD = s.totalCost / COST_SCALE;
+    const ppm = tot > 0 ? "$" + (costUSD / (tot / TPM_SCALE)).toFixed(4) : "N/A";
     const ep = modelPrices[s.model];
     const row: (string | Node)[] = [
       s.model,
