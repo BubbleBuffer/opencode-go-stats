@@ -16,7 +16,7 @@ const USERSCRIPT_BANNER = `// ==UserScript==
 async function build() {
   // Extension content script
   await esbuild.build({
-    entryPoints: ["src/extension.ts"],
+    entryPoints: ["src/entries/extension.ts"],
     bundle: true,
     outfile: "extension/content.js",
     format: "iife",
@@ -28,7 +28,7 @@ async function build() {
 
   // Console script
   await esbuild.build({
-    entryPoints: ["src/console.ts"],
+    entryPoints: ["src/entries/console.ts"],
     bundle: true,
     outfile: "pull-stats.js",
     format: "iife",
@@ -40,7 +40,7 @@ async function build() {
 
   // Userscript
   await esbuild.build({
-    entryPoints: ["src/extension.ts"],
+    entryPoints: ["src/entries/extension.ts"],
     bundle: true,
     outfile: "opencode-stats.user.js",
     format: "iife",
