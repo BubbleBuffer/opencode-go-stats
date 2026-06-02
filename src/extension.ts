@@ -55,7 +55,13 @@ import { runPipeline } from "./pipeline";
 
   applyFilter(0);
 
-  const Chart = await loadChartJS();
+  let Chart: any;
+  try {
+    Chart = await loadChartJS();
+  } catch (e) {
+    console.warn("[oc-stats] Chart.js unavailable, skipping charts:", e);
+    return;
+  }
   if (Chart) {
     const pageChart = document.querySelector('[data-slot="chart-container"]') as HTMLElement | null;
     if (pageChart) { pageChart.innerHTML = ""; pageChart.style.cssText = "height:auto;min-height:auto"; }

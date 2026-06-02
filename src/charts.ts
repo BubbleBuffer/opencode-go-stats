@@ -39,12 +39,27 @@ export const dateRanges: DateRange[] = [
 
 export async function loadChartJS(): Promise<any> {
   if ((window as any).Chart) return (window as any).Chart;
-  return new Promise((resolve) => {
-    const s = document.createElement("script");
-    s.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
-    s.onload = () => resolve((window as any).Chart);
-    s.onerror = () => { console.warn("[oc-stats] failed to load Chart.js from CDN"); resolve(null); };
-    document.head.appendChild(s);
+  return new Promise<any>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+
+    const timeout = setTimeout(() => {
+      script.remove();
+      reject(new Error("Chart.js CDN load timed out after 10s"));
+    }, 10_000);
+
+    script.onload = () => {
+      clearTimeout(timeout);
+      resolve((window as any).Chart);
+    };
+
+    script.onerror = (err) => {
+      clearTimeout(timeout);
+      console.warn("[oc-stats] Chart.js CDN load failed:", err);
+      reject(err);
+    };
+
+    document.head.appendChild(script);
   });
 }
 
