@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "OpenCode Stats",
+  "version": "1.0",
+  "description": "Per-model cost stats for opencode.ai usage",
+  "content_scripts": [{
+    "matches": ["https://opencode.ai/workspace/*/usage"],
+    "js": ["content.js"]
+  }],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "opencode-stats@local.dev"
+    }
+  }
+}
