@@ -28,7 +28,7 @@ npm install
 npm run build
 ```
 
-`npm run build` produces two scripts from the same shared source modules (`src/parse.ts`, `src/stats.ts`, `src/pricing.ts`, `src/cache.ts`):
+`npm run build` produces three scripts from the same shared source modules (`src/parse.ts`, `src/stats.ts`, `src/pricing.ts`, `src/cache.ts`):
 
 ### Extension (`extension/content.js`) — full visual dashboard
 
@@ -46,6 +46,10 @@ The extension automatically injects into `https://opencode.ai/workspace/*/usage`
 Open an opencode.ai workspace usage page, paste the contents of `pull-stats.js` into the browser console, and run it.
 
 Outputs everything to the console as plain `console.table()` calls — no visual UI, no charts. Includes a Top 20 Sessions by Cost breakdown that the extension does not show. Useful for a quick look without installing an extension.
+
+### Userscript (`opencode-stats.user.js`) — no-install dashboard
+
+Install with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/), or any userscript manager. Same visual dashboard as the browser extension, but installs in one click from the script URL — no extension loading needed.
 
 ## Release
 

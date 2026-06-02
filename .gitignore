@@ -2,4 +2,5 @@ node_modules
 dist
 pull-stats.js
 extension/content.js
+opencode-stats.user.js
 extension.zip
