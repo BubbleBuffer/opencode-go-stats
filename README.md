@@ -125,10 +125,10 @@ npm run check
 
 ### API Authentication
 
-The `FN_ID` constant (`bfd684bf...`) is the server function identifier used by opencode.ai's
+The `FN_ID` constant (see `src/constants.ts`) is the server function identifier used by opencode.ai's
 internal API gateway to route usage-history requests. It is a public routing key, not a secret,
 and is embedded in the opencode.ai web client. If the upstream API changes, this value must be
-updated in both `src/console.ts` and `src/extension.ts`.
+updated in `src/constants.ts`.
 
 ## How It Works
 
