@@ -3,6 +3,9 @@
   "version": "1.1.0",
   "description": "Browser extension and userscript for opencode.ai workspace usage analytics",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.19"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/BubbleBuffer/opencode-go-stats"
@@ -16,7 +19,8 @@
     "release": "npm run build && cd extension && zip -r ../extension.zip manifest.json content.js"
   },
   "devDependencies": {
-    "esbuild": "^0.24.0",
+    "esbuild": "^0.28.0",
+    "jsdom": "^29.1.1",
     "typescript": "^5.5.0",
     "vitest": "^4.1.8"
   }
