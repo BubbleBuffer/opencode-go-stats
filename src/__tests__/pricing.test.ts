@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { estimateModelPrices } from "./pricing";
-import type { UsageRecord, ModelStats } from "./types";
-import { COST_SCALE, TPM_SCALE } from "./constants";
+import { estimateModelPrices } from "../packages/stats/pricing";
+import type { UsageRecord, ModelStats } from "../packages/core/types";
+import { COST_SCALE, TPM_SCALE } from "../packages/core/constants";
 
 function makeRec(overrides: Partial<UsageRecord> = {}): UsageRecord {
   return {

@@ -1,4 +1,4 @@
-import type { RawApiRecord, UsageRecord } from "./types";
+import type { RawApiRecord, UsageRecord } from "../core/types";
 
 export function serialize(prefix: string) {
   const ts = Date.now();
@@ -7,18 +7,26 @@ export function serialize(prefix: string) {
   return { instance, ts, postfix };
 }
 
-function normalizeRecords(allRecords: RawApiRecord[]): UsageRecord[] {
-  return allRecords.map(r => ({
-    id: r.id!,
-    timeCreated: r.timeCreated || "",
-    model: r.model || "unknown",
-    inputTokens: r.inputTokens ?? 0,
-    outputTokens: r.outputTokens ?? 0,
-    cacheReadTokens: r.cacheReadTokens ?? 0,
-    cacheCreationTokens: r.cacheCreationTokens ?? 0,
-    cost: r.cost ?? 0,
-    reasoningTokens: 0,
-  }));
+function toNumber(val: unknown): number {
+  if (typeof val === "number" && Number.isFinite(val)) return val;
+  return 0;
+}
+
+export function normalizeRecords(allRecords: RawApiRecord[]): UsageRecord[] {
+  return allRecords
+    .filter(r => r.id)
+    .map(r => ({
+      id: String(r.id),
+      timeCreated: r.timeCreated || "",
+      model: r.model || "unknown",
+      inputTokens: toNumber(r.inputTokens),
+      outputTokens: toNumber(r.outputTokens),
+      cacheReadTokens: toNumber(r.cacheReadTokens),
+      cacheCreationTokens: toNumber(r.cacheCreationTokens),
+      cost: toNumber(r.cost),
+      reasoningTokens: toNumber(r.reasoningTokens),
+      sessionID: r.sessionID ?? undefined,
+    }));
 }
 
 export async function fetchAllPages(
@@ -65,10 +73,9 @@ export async function fetchAllPages(
 
       if (records.length === 0) {
         consecutiveEmpties++;
-        if (consecutiveEmpties >= 2) return { records: normalizeRecords(allRecords), reachedEnd: true };
       } else {
         consecutiveEmpties = 0;
-        const newRecords = records.filter(r => !cachedIds.has(r.id!));
+        const newRecords = records.filter(r => r.id && !cachedIds.has(r.id));
         for (const r of newRecords) {
           if (r.id) cachedIds.add(r.id);
         }
@@ -78,6 +85,8 @@ export async function fetchAllPages(
         allRecords.push(...newRecords);
       }
     }
+
+    if (consecutiveEmpties >= 2) return { records: normalizeRecords(allRecords), reachedEnd: true };
 
     page += batchSize;
   }

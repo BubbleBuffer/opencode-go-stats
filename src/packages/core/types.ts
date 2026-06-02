@@ -8,6 +8,8 @@ export interface RawApiRecord {
   cacheReadTokens?: number | null;
   cacheCreationTokens?: number | null;
   cost?: number | null;
+  sessionID?: string | null;
+  reasoningTokens?: number | null;
 }
 
 /** Validated usage record with required fields present. */
@@ -24,15 +26,9 @@ export interface UsageRecord {
   sessionID?: string;
 }
 
-export interface ModelPrices {
-  inputTokens?: number;
-  outputTokens?: number;
-  reasoningTokens?: number;
-  cacheReadTokens?: number;
-  cacheWrite1hTokens?: number;
-  cacheWrite5mTokens?: number;
-  [model: string]: number | undefined;
-}
+export type PricingTokenField = "inputTokens" | "outputTokens" | "reasoningTokens" | "cacheReadTokens";
+
+export type ModelPrices = Partial<Record<PricingTokenField, number>>;
 
 export interface ModelStats {
   model: string;

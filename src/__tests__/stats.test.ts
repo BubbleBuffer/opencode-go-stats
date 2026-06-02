@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { computeStats } from "./stats";
-import type { UsageRecord } from "./types";
+import { computeStats } from "../packages/stats/stats";
+import type { UsageRecord } from "../packages/core/types";
 
 function makeRec(overrides: Partial<UsageRecord> = {}): UsageRecord {
   return {

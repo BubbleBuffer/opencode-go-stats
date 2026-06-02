@@ -1,6 +1,6 @@
-import type { UsageRecord, ModelStats, StatsResult } from "./types";
+import type { UsageRecord, ModelStats, StatsResult } from "../core/types";
 import { el, formatUSD } from "./ui";
-import { COST_SCALE, TPM_SCALE } from "./constants";
+import { COST_SCALE, TPM_SCALE } from "../core/constants";
 
 type Metric = "cost" | "tokens" | "requests" | "efficiency" | "share";
 
@@ -28,13 +28,28 @@ const STROKE_COLORS = [
 
 export interface DateRange { label: string; fn: (r: UsageRecord) => boolean }
 
+/** Returns timestamp for a date string, or NaN if invalid/empty. */
+export function finiteDate(s: string | undefined | null): number {
+  if (!s) return NaN;
+  const d = new Date(s);
+  return isFinite(d.getTime()) ? d.getTime() : NaN;
+}
+
 export const dateRanges: DateRange[] = [
   { label: "All", fn: r => !!r.timeCreated },
-  { label: "Today", fn: r => new Date(r.timeCreated!).toDateString() === new Date().toDateString() },
-  { label: "7d", fn: r => Date.now() - new Date(r.timeCreated!).getTime() < 7 * 864e5 },
-  { label: "30d", fn: r => Date.now() - new Date(r.timeCreated!).getTime() < 30 * 864e5 },
-  { label: "90d", fn: r => Date.now() - new Date(r.timeCreated!).getTime() < 90 * 864e5 },
-  { label: "1y", fn: r => Date.now() - new Date(r.timeCreated!).getTime() < 365 * 864e5 },
+  { label: "Today", fn: r => {
+    const ts = finiteDate(r.timeCreated);
+    if (!isFinite(ts)) return false;
+    const recordDate = new Date(ts);
+    const now = new Date();
+    const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const recordUTC = new Date(Date.UTC(recordDate.getUTCFullYear(), recordDate.getUTCMonth(), recordDate.getUTCDate()));
+    return recordUTC.getTime() === todayUTC.getTime();
+  } },
+  { label: "7d", fn: r => Date.now() - finiteDate(r.timeCreated) < 7 * 864e5 },
+  { label: "30d", fn: r => Date.now() - finiteDate(r.timeCreated) < 30 * 864e5 },
+  { label: "90d", fn: r => Date.now() - finiteDate(r.timeCreated) < 90 * 864e5 },
+  { label: "1y", fn: r => Date.now() - finiteDate(r.timeCreated) < 365 * 864e5 },
 ];
 
 export async function loadChartJS(): Promise<any> {
@@ -42,6 +57,8 @@ export async function loadChartJS(): Promise<any> {
   return new Promise<any>((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+    script.integrity = "sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g";
+    script.crossOrigin = "anonymous";
 
     const timeout = setTimeout(() => {
       script.remove();
@@ -93,7 +110,7 @@ export function renderCharts(
     #oc-chart-controls select:hover { border-color: var(--color-text-muted); }
     #oc-chart-controls button.active { background: var(--color-bg); border-color: var(--color-text-muted); color: var(--color-text); }
     #oc-chart-card { border: 1px solid var(--color-border); border-radius: var(--border-radius-sm); padding: var(--space-8); }
-    #oc-chart-canvas-wrap { height: 400px; position: relative; }
+    #oc-chart-canvas-wrap { height: 400px; position: relative; overflow: hidden; }
     @media (max-width: 700px) {
       #oc-chart-card { padding: var(--space-4); }
       #oc-chart-canvas-wrap { min-height: 340px; }
@@ -212,8 +229,9 @@ export function renderCharts(
   function dailyBuckets() {
     const buckets: Record<string, UsageRecord[]> = {};
     for (const record of filteredRecords()) {
-      if (!record.timeCreated) continue;
-      const day = new Date(record.timeCreated).toISOString().slice(0, 10);
+      const ts = finiteDate(record.timeCreated);
+      if (!isFinite(ts)) continue;
+      const day = new Date(ts).toISOString().slice(0, 10);
       if (!buckets[day]) buckets[day] = [];
       buckets[day].push(record);
     }
@@ -306,6 +324,7 @@ export function renderCharts(
     return {
       responsive: true,
       maintainAspectRatio: false,
+      resizeDelay: 200,
       interaction: { mode: "index", intersect: false },
       plugins: commonPlugins(unit),
       scales: {
@@ -319,6 +338,7 @@ export function renderCharts(
     return {
       responsive: true,
       maintainAspectRatio: false,
+      resizeDelay: 200,
       indexAxis: "y",
       plugins: commonPlugins(unit),
       scales: {

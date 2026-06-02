@@ -1,13 +1,17 @@
-import { computeStats } from "./stats";
-import { loadCache } from "./cache";
-import { COST_SCALE, TPM_SCALE } from "./constants";
-import { runPipeline } from "./pipeline";
-
-const WS_ID = window.location.pathname.split("/")[2];
-const FN_ID = "bfd684bfc2e4eed05cd0b518f5e4eafd3f3376e3938abb9e536e7c03df831e5c";
-const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
+import { computeStats } from "../packages/stats/stats";
+import { loadCache } from "../packages/cache/cache";
+import { COST_SCALE, TPM_SCALE } from "../packages/core/constants";
+import { runPipeline } from "../packages/pipeline/pipeline";
 
 (async () => {
+  const WS_ID = window.location.pathname.split("/")[2];
+  if (!WS_ID || WS_ID === "") {
+    console.error("[oc-stats] Cannot determine workspace ID from URL. Make sure you are on an opencode.ai workspace page.");
+    return;
+  }
+
+  const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
+
   console.group("\u{1F4CA} OpenCode Go Usage Stats");
   console.log("Workspace:", WS_ID);
 
@@ -21,7 +25,7 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
   }
 
   console.log("Fetching all usage pages...");
-  const allRecords = await runPipeline(WS_ID, CACHE_KEY, FN_ID);
+  const allRecords = await runPipeline(WS_ID, CACHE_KEY);
 
   if (allRecords.length === 0) {
     console.log("No usage records found.");
@@ -120,7 +124,7 @@ const CACHE_KEY = `opencode_stats_v2_${WS_ID}`;
       })),
   );
 
-  console.log("\n\u2705 Done!");
+  console.log("\u2705 Done!");
   console.groupEnd();
 
   (window as any).__opencodeStats = {

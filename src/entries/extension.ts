@@ -1,14 +1,18 @@
-import type { StatsResult } from "./types";
-import { computeStats } from "./stats";
-import { showLoading, injectBaseStyles, buildPricingTable, buildSummaryTable } from "./ui";
-import { loadChartJS, renderCharts, dateRanges } from "./charts";
-import { runPipeline } from "./pipeline";
+import type { StatsResult } from "../packages/core/types";
+import { computeStats } from "../packages/stats/stats";
+import { showLoading, injectBaseStyles, buildPricingTable, buildSummaryTable } from "../packages/ui/ui";
+import { loadChartJS, renderCharts, dateRanges } from "../packages/ui/charts";
+import { runPipeline } from "../packages/pipeline/pipeline";
 
 (async () => {
   if (document.getElementById("opencode-stats-root")) return;
 
   const WS_ID = window.location.pathname.split("/")[2];
-  const FN_ID = "bfd684bfc2e4eed05cd0b518f5e4eafd3f3376e3938abb9e536e7c03df831e5c";
+  if (!WS_ID || WS_ID === "") {
+    console.error("[oc-stats] Cannot determine workspace ID from URL. Make sure you are on an opencode.ai workspace page.");
+    return;
+  }
+
   const CACHE_KEY = `opencode_ext_stats_v3_${WS_ID}`;
 
   injectBaseStyles();
@@ -21,7 +25,7 @@ import { runPipeline } from "./pipeline";
   if (usageSection) sections.insertBefore(root, usageSection);
   else sections.appendChild(root);
 
-  const allRecords = await runPipeline(WS_ID, CACHE_KEY, FN_ID);
+  const allRecords = await runPipeline(WS_ID, CACHE_KEY);
 
   console.log("Total records:", allRecords.length);
 
@@ -63,9 +67,19 @@ import { runPipeline } from "./pipeline";
     return;
   }
   if (Chart) {
-    const pageChart = document.querySelector('[data-slot="chart-container"]') as HTMLElement | null;
-    if (pageChart) { pageChart.innerHTML = ""; pageChart.style.cssText = "height:auto;min-height:auto"; }
-    const target = pageChart || root;
-    renderCharts(allRecords, getStats, applyFilter, target);
+    let pageChart: HTMLElement | null = null;
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      pageChart = document.querySelector('[data-slot="chart-container"]') as HTMLElement | null;
+      if (pageChart) break;
+      await new Promise(r => setTimeout(r, 250));
+    }
+    if (!pageChart) {
+      console.error("[oc-stats] Chart container not found on page after 5s");
+      return;
+    }
+    pageChart.innerHTML = "";
+    pageChart.style.cssText = "height:auto;min-height:auto";
+    renderCharts(allRecords, getStats, applyFilter, pageChart);
   }
 })().catch((e) => { console.error("[oc-stats] Fatal extension:", e); });

@@ -1,5 +1,33 @@
-import type { ModelPrices, ModelStats, StatsResult } from "./types";
-import { COST_SCALE, TPM_SCALE } from "./constants";
+import type { ModelPrices, ModelStats, StatsResult } from "../core/types";
+import { COST_SCALE, TPM_SCALE } from "../core/constants";
+
+type SummaryPricingField = "inputTokens" | "outputTokens" | "cacheReadTokens";
+type SummaryPricingColumn = { field: SummaryPricingField; header: string };
+
+const SUMMARY_PRICING_COLUMNS: SummaryPricingColumn[] = [
+  { field: "inputTokens", header: "In $/1M" },
+  { field: "outputTokens", header: "Out $/1M" },
+  { field: "cacheReadTokens", header: "Cache Rd $/1M" },
+];
+
+export function summaryPricingColumns(
+  modelStats: Record<string, ModelStats>,
+  modelPrices: Record<string, ModelPrices>,
+): SummaryPricingColumn[] {
+  return SUMMARY_PRICING_COLUMNS.filter(col =>
+    Object.values(modelStats).some(s => (modelPrices[s.model]?.[col.field] || 0) > 0),
+  );
+}
+
+export function summaryPricingCells(
+  prices: ModelPrices | undefined,
+  columns: SummaryPricingColumn[],
+): string[] {
+  return columns.map(col => {
+    const value = prices?.[col.field];
+    return value ? "$" + value.toFixed(4) : "-";
+  });
+}
 
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Record<string, any>, children?: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -134,6 +162,7 @@ export function buildSummaryTable(
   totalCostUSD: number,
 ): HTMLElement {
   const cols = ["Model", "Requests", "Input Tok", "Output Tok", "Reason Tok", "Cache Read", "Cost (USD)", "$/1M Tok"];
+  const pricingColumns = summaryPricingColumns(modelStats, modelPrices);
   const rows = Object.values(modelStats).map(s => {
     const tot = s.inputTokens + s.outputTokens + s.reasoningTokens + s.cacheReadTokens;
     const costUSD = s.totalCost / COST_SCALE;
@@ -149,22 +178,11 @@ export function buildSummaryTable(
       formatUSD(costUSD),
       ppm,
     ];
-    if (ep) {
-      if (ep.inputTokens) row.push("$" + ep.inputTokens.toFixed(4));
-      if (ep.outputTokens) row.push("$" + ep.outputTokens.toFixed(4));
-      if (ep.cacheReadTokens) row.push("$" + ep.cacheReadTokens.toFixed(4));
-    }
+    row.push(...summaryPricingCells(ep, pricingColumns));
     return row;
   });
 
-  const fullCols = [...cols];
-  const sample = Object.values(modelStats)[0];
-  if (sample) {
-    const ep = modelPrices[sample.model];
-    if (ep?.inputTokens) fullCols.push("In $/1M");
-    if (ep?.outputTokens) fullCols.push("Out $/1M");
-    if (ep?.cacheReadTokens) fullCols.push("Cache Rd $/1M");
-  }
+  const fullCols = [...cols, ...pricingColumns.map(col => col.header)];
   return buildSection(
     "Per-Model Summary",
     totalTokens.toLocaleString() + " total tokens — " + formatUSD(totalCostUSD) + " total cost",

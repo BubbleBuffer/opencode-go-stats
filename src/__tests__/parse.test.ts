@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseRefs, parseRecordObj } from "./parse";
+import { parseRefs, parseRecordObj } from "../packages/api/parse";
 
 describe("parseRefs", () => {
   it("parses null refs", () => {

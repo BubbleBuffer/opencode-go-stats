@@ -1,6 +1,6 @@
-import type { UsageRecord, ModelStats, TotalBreakdown, StatsResult } from "./types";
+import type { UsageRecord, ModelStats, TotalBreakdown, StatsResult } from "../core/types";
 import { estimateModelPrices } from "./pricing";
-import { COST_SCALE } from "./constants";
+import { COST_SCALE } from "../core/constants";
 
 export function computeStats(records: UsageRecord[]): StatsResult {
   const models = [...new Set(records.map(r => r.model || "unknown"))];

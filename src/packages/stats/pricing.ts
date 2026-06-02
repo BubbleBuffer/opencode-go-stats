@@ -1,5 +1,5 @@
-import type { UsageRecord, ModelPrices } from "./types";
-import { COST_SCALE, TPM_SCALE } from "./constants";
+import type { UsageRecord, ModelPrices, PricingTokenField } from "../core/types";
+import { COST_SCALE, TPM_SCALE } from "../core/constants";
 
 function solveLinearSystem(A: number[][], b: number[]): number[] | null {
   const n = b.length;
@@ -25,10 +25,10 @@ function solveLinearSystem(A: number[][], b: number[]): number[] | null {
 }
 
 export function estimateModelPrices(records: UsageRecord[]): ModelPrices | null {
-  const fields = ["inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens", "cacheWrite1hTokens", "cacheWrite5mTokens"];
-  const active = fields.filter(f => records.some(r => (r[f as keyof UsageRecord] as number || 0) > 0));
+  const fields: PricingTokenField[] = ["inputTokens", "outputTokens", "reasoningTokens", "cacheReadTokens"];
+  const active = fields.filter(f => records.some(r => (r[f] || 0) > 0));
   if (active.length === 0) return null;
-  const paid = records.filter(r => r.cost! > 0);
+  const paid = records.filter(r => r.cost > 0);
   if (paid.length < active.length) return null;
 
   const n = active.length;
@@ -36,8 +36,8 @@ export function estimateModelPrices(records: UsageRecord[]): ModelPrices | null 
   const ATb: number[] = new Array(n).fill(0);
 
   for (const r of paid) {
-    const costUSD = r.cost! / COST_SCALE;
-    const x = active.map(f => ((r[f as keyof UsageRecord] as number) || 0) / TPM_SCALE);
+    const costUSD = r.cost / COST_SCALE;
+    const x = active.map(f => (r[f] || 0) / TPM_SCALE);
     for (let i = 0; i < n; i++) {
       ATb[i] += x[i] * costUSD;
       for (let j = 0; j < n; j++) ATA[i][j] += x[i] * x[j];
