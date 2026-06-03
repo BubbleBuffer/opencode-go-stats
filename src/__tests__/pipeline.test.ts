@@ -37,17 +37,23 @@ describe("runPipeline", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns cached records without fetching when cache is complete", async () => {
+  it("fetches new records even when cache is complete, returning merged results", async () => {
     const cachedRecords: UsageRecord[] = [makeRecord("cached-1"), makeRecord("cached-2")];
     loadCacheSpy.mockReturnValue({ records: cachedRecords, at: Date.now(), complete: true });
 
+    const fetchedRecords: UsageRecord[] = [makeRecord("fetched-1")];
+    fetchAllPagesSpy.mockResolvedValue({ records: fetchedRecords, reachedEnd: false });
+
+    mergeAndSortSpy.mockReturnValue([fetchedRecords[0], cachedRecords[0], cachedRecords[1]]);
+
     const result = await runPipeline("ws-1", "test-cache-key");
 
-    expect(result).toEqual(cachedRecords);
     expect(loadCacheSpy).toHaveBeenCalledWith("test-cache-key");
-    expect(fetchAllPagesSpy).not.toHaveBeenCalled();
-    expect(saveCacheSpy).not.toHaveBeenCalled();
-    expect(mergeAndSortSpy).not.toHaveBeenCalled();
+    expect(fetchAllPagesSpy).toHaveBeenCalledWith("ws-1", FN_ID, new Set(["cached-1", "cached-2"]), true);
+    expect(mergeAndSortSpy).toHaveBeenCalledWith(fetchedRecords, cachedRecords);
+    expect(saveCacheSpy).toHaveBeenCalled();
+    // mergeAndSort mock returns deduplicated (no dupes), so all 3 should be present
+    expect(result).toEqual([fetchedRecords[0], cachedRecords[0], cachedRecords[1]]);
   });
 
   it("fetches, merges, dedupes, and saves when cache is incomplete and reachedEnd is true", async () => {

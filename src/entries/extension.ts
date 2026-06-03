@@ -17,6 +17,9 @@ import { runPipeline } from "../packages/pipeline/pipeline";
 
   injectBaseStyles();
 
+  const filterContainer = document.querySelector('[data-slot="filter-container"]');
+  if (filterContainer) (filterContainer as HTMLElement).style.display = "none";
+
   const sections = document.querySelector('[data-slot="sections"]');
   if (!sections) return;
 

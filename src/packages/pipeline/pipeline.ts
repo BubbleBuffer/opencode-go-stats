@@ -10,11 +10,6 @@ export async function runPipeline(
   const cache = loadCache(cacheKey);
   const { records: cached, complete: wasComplete } = cache;
 
-  // Return immediately if cache is already complete; no network fetch needed.
-  if (wasComplete) {
-    return cached;
-  }
-
   const cachedIds = new Set<string>();
   for (const r of cached) {
     if (r.id) cachedIds.add(r.id);
