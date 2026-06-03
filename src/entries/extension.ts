@@ -3,9 +3,48 @@ import { computeStats } from "../packages/stats/stats";
 import { showLoading, injectBaseStyles, buildPricingTable, buildSummaryTable } from "../packages/ui/ui";
 import { renderCharts, dateRanges } from "../packages/ui/charts";
 import { runPipeline } from "../packages/pipeline/pipeline";
+import { loadCache } from "../packages/cache/cache";
+import { Chart } from "chart.js";
 
-(async () => {
-  if (document.getElementById("opencode-stats-root")) return;
+let currentAbort: AbortController | null = null;
+
+function cleanup() {
+  const canvas = document.getElementById("oc-chart-canvas") as HTMLCanvasElement | null;
+  if (canvas) {
+    const chart = Chart.getChart(canvas);
+    if (chart) chart.destroy();
+  }
+  document.getElementById("opencode-stats-root")?.remove();
+  document.getElementById("opencode-stats-css")?.remove();
+  document.getElementById("oc-chart-dashboard-style")?.remove();
+  document.getElementById("oc-chart-dashboard")?.remove();
+  const filterContainer = document.querySelector('[data-slot="filter-container"]');
+  if (filterContainer) (filterContainer as HTMLElement).style.display = "";
+}
+
+function isUsagePage(): boolean {
+  return /^\/workspace\/[^/]+\/usage$/.test(window.location.pathname);
+}
+
+async function waitForEl(selector: string, timeoutMs: number, signal?: AbortSignal): Promise<HTMLElement | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (signal?.aborted) return null;
+    const el = document.querySelector(selector) as HTMLElement | null;
+    if (el) return el;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return null;
+}
+
+async function main() {
+  if (!isUsagePage()) return;
+
+  if (currentAbort) currentAbort.abort();
+  currentAbort = new AbortController();
+  const signal = currentAbort.signal;
+
+  cleanup();
 
   const WS_ID = window.location.pathname.split("/")[2];
   if (!WS_ID || WS_ID === "") {
@@ -20,24 +59,20 @@ import { runPipeline } from "../packages/pipeline/pipeline";
   const filterContainer = document.querySelector('[data-slot="filter-container"]');
   if (filterContainer) (filterContainer as HTMLElement).style.display = "none";
 
-  const sections = document.querySelector('[data-slot="sections"]');
+  const sections = await waitForEl('[data-slot="sections"]', 5000, signal);
   if (!sections) return;
+  if (signal.aborted) return;
+
+  const cache = loadCache(CACHE_KEY);
 
   const root = showLoading();
   const usageSection = sections.querySelector('[data-slot="usage-table"]')?.closest("section");
   if (usageSection) sections.insertBefore(root, usageSection);
   else sections.appendChild(root);
 
-  const allRecords = await runPipeline(WS_ID, CACHE_KEY);
+  if (signal.aborted) return;
 
-  console.log("Total records:", allRecords.length);
-
-  if (allRecords.length === 0) {
-    root.querySelector("p")!.textContent = "No usage data found.";
-    return;
-  }
-
-  root.innerHTML = "";
+  let allRecords = cache.records;
 
   let currentStats: StatsResult | null = null;
 
@@ -60,20 +95,83 @@ import { runPipeline } from "../packages/pipeline/pipeline";
     return currentStats;
   }
 
-  applyFilter(0);
+  let chartHandle: { refreshData: () => void } | null = null;
+  let chartRenderSeq = 0;
 
-  let pageChart: HTMLElement | null = null;
-  const deadline = Date.now() + 5000;
-  while (Date.now() < deadline) {
-    pageChart = document.querySelector('[data-slot="chart-container"]') as HTMLElement | null;
-    if (pageChart) break;
-    await new Promise(r => setTimeout(r, 250));
+  async function ensureCharts() {
+    if (chartHandle) {
+      chartHandle.refreshData();
+      return;
+    }
+
+    const seq = ++chartRenderSeq;
+    document.getElementById("oc-chart-dashboard")?.remove();
+    document.getElementById("oc-chart-dashboard-style")?.remove();
+    const pageChart = await waitForEl('[data-slot="chart-container"]', 5000, signal);
+    if (!pageChart || signal.aborted) return;
+    if (seq !== chartRenderSeq) return;
+    pageChart.innerHTML = "";
+    pageChart.style.cssText = "height:auto;min-height:auto";
+    chartHandle = renderCharts(() => allRecords, getStats, applyFilter, pageChart);
   }
-  if (!pageChart) {
-    console.error("[oc-stats] Chart container not found on page after 5s");
-    return;
+
+  const hasCache = allRecords.length > 0;
+
+  if (hasCache) {
+    applyFilter(0);
+    ensureCharts();
   }
-  pageChart.innerHTML = "";
-  pageChart.style.cssText = "height:auto;min-height:auto";
-  renderCharts(allRecords, getStats, applyFilter, pageChart);
-})().catch((e) => { console.error("[oc-stats] Fatal extension:", e); });
+
+  runPipeline(WS_ID, CACHE_KEY).then(updated => {
+    if (signal.aborted) return;
+
+    console.log("Total records:", updated.length);
+
+    if (updated.length === 0) {
+      if (!hasCache) root.querySelector("p")!.textContent = "No usage data found.";
+      return;
+    }
+
+    allRecords = updated;
+    applyFilter(0);
+    ensureCharts();
+  }).catch(e => {
+    console.error("[oc-stats] Pipeline error:", e);
+  });
+}
+
+function watchNavigation() {
+  let lastPath = window.location.pathname;
+
+  const check = () => {
+    const currentPath = window.location.pathname;
+    if (currentPath !== lastPath) {
+      lastPath = currentPath;
+      if (isUsagePage()) {
+        main().catch(e => { console.error("[oc-stats] Error:", e); });
+      } else {
+        cleanup();
+      }
+    }
+  };
+
+  window.addEventListener("popstate", check);
+
+  const origPush = history.pushState.bind(history);
+  const origReplace = history.replaceState.bind(history);
+
+  (history as any).pushState = function (data: any, unused: string, url?: string | URL | null) {
+    origPush(data, unused, url);
+    check();
+  };
+
+  (history as any).replaceState = function (data: any, unused: string, url?: string | URL | null) {
+    origReplace(data, unused, url);
+    check();
+  };
+
+  return check;
+}
+
+const check = watchNavigation();
+main().catch(e => { console.error("[oc-stats] Fatal extension:", e); });

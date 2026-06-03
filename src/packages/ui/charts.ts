@@ -56,13 +56,13 @@ export const dateRanges: DateRange[] = [
 ];
 
 export function renderCharts(
-  allRecords: UsageRecord[],
+  getAllRecords: () => UsageRecord[],
   getStats: () => StatsResult | null,
   applyFilter: (idx: number) => void,
   target: HTMLElement,
-) {
+): { refreshData: () => void } {
   let currentStats = getStats();
-  if (!currentStats) return;
+  if (!currentStats) return { refreshData: () => {} };
 
   let activeRange = 0;
   let activeMetric: Metric = "cost";
@@ -137,6 +137,59 @@ export function renderCharts(
   updateActiveRange();
   renderActiveChart();
 
+  function refreshData() {
+    currentStats = getStats();
+    if (!currentStats || !chartInst) return;
+
+    try {
+      let data: any;
+
+      if (activeMetric === "cost") {
+        const { days, buckets } = dailyBuckets();
+        data = { labels: days, datasets: modelDailyDatasets(days, buckets, recordCostUSD) };
+      } else if (activeMetric === "tokens") {
+        const { days, buckets } = dailyBuckets();
+        data = { labels: days, datasets: modelDailyDatasets(days, buckets, recordTokenTotal) };
+      } else if (activeMetric === "requests") {
+        const { days, buckets } = dailyBuckets();
+        data = { labels: days, datasets: modelDailyDatasets(days, buckets, () => 1) };
+      } else if (activeMetric === "efficiency") {
+        const stats = modelStatsSorted("efficiency").filter(s => tokenTotal(s) > 0);
+        data = {
+          labels: stats.map(s => s.model),
+          datasets: [{
+            label: "$ / 1M Tokens",
+            data: stats.map(s => round((s.totalCost / COST_SCALE) / (tokenTotal(s) / TPM_SCALE))),
+            backgroundColor: FILL_COLORS[0],
+            borderColor: STROKE_COLORS[0],
+            borderWidth: 1,
+          }],
+        };
+      } else {
+        const stats = modelStatsSorted("cost");
+        const total = currentStats.totalCostUSD;
+        data = {
+          labels: stats.map(s => s.model),
+          datasets: [{
+            label: "Cost Share",
+            data: stats.map(s => total > 0 ? round(((s.totalCost / COST_SCALE) / total) * 100) : 0),
+            backgroundColor: FILL_COLORS[1],
+            borderColor: STROKE_COLORS[1],
+            borderWidth: 1,
+            costUSD: stats.map(s => s.totalCost / COST_SCALE),
+          }],
+        };
+      }
+
+      chartInst.data = data;
+      chartInst.update("none");
+    } catch (e) {
+      console.warn("Chart refresh error:", e);
+    }
+  }
+
+  return { refreshData };
+
   function addOption(select: HTMLSelectElement, value: string, label: string) {
     const option = document.createElement("option");
     option.value = value;
@@ -165,7 +218,7 @@ export function renderCharts(
   }
 
   function filteredRecords() {
-    return allRecords.filter(dateRanges[activeRange].fn);
+    return getAllRecords().filter(dateRanges[activeRange].fn);
   }
 
   function modelName(r: UsageRecord) {
