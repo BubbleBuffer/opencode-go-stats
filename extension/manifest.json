@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "OpenCode Stats",
-  "version": "1.2.1",
+  "version": "1.2.3",
   "description": "Per-model cost stats for opencode.ai usage",
   "content_scripts": [{
-    "matches": ["https://opencode.ai/workspace/*/usage"],
+    "matches": ["https://opencode.ai/*"],
     "js": ["content.js"]
   }],
   "browser_specific_settings": {

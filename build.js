@@ -9,7 +9,7 @@ const USERSCRIPT_BANNER = `// ==UserScript==
 // @version      ${pkg.version}
 // @description  Per-model token/cost analytics for opencode.ai workspace usage
 // @author       BubbleBuffer
-// @match        https://opencode.ai/workspace/*/usage
+// @match        https://opencode.ai/*
 // @icon         https://opencode.ai/favicon.ico
 // @grant        none
 // @run-at       document-end
