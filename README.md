@@ -29,26 +29,22 @@ The summary table also includes the fitted pricing columns when pricing can be e
 
 The dashboard has range filters for `All`, `Today`, `7d`, `30d`, `90d`, and `1y`. The selected range updates the tables and the chart together.
 
-Three of the chart modes are daily stacked bars, split by model:
+Two chart modes are daily stacked bars, split by model:
 
 | Chart | What it answers |
 |---|---|
-| Cost | How much each model cost per day. |
-| Tokens | How many input, output, reasoning, and cache-read tokens each model used per day, summed into one token total. |
+| Spend Over Time | How much each model cost per day. |
 | Requests | How many requests each model handled per day. |
 
-Two chart modes compare models across the selected range:
+Three chart modes compare models across the selected range:
+
+Comparison charts show contextual controls for rank-by column, sort direction, and Token Mix percent/absolute display.
 
 | Chart | What it answers |
 |---|---|
-| Efficiency | Which models were most expensive per 1M tokens. This is a horizontal bar chart sorted by effective dollars per 1M tokens. |
-| Share | Which models accounted for the largest share of total cost. This is a horizontal bar chart with percent share and dollar cost in the tooltip. |
-
-Example chart views:
-
-| Cost | Tokens | Efficiency |
-|---|---|---|
-| ![Daily cost chart](docs/cost_chart.png) | ![Daily token chart](docs/token_chart.png) | ![Average price per million chart](docs/avg_price_per_million_chart.png) |
+| Cost / Request | Which models are most expensive per actual request. Rank by cost/request, total cost, requests, effective $/1M tokens, or average tokens/request. |
+| Avg Tokens / Request | Which models use the largest requests, split into input, output, reasoning, and cache-read averages. Rank by total or any token component. |
+| Token Mix | How each model's token usage is composed across input, output, reasoning, and cache reads. Switch between percent and absolute token volume, and rank by total tokens, token share, or cost. |
 
 ## Console Script
 

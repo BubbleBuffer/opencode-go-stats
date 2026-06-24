@@ -5,7 +5,48 @@ import { COST_SCALE, TPM_SCALE } from "../core/constants";
 
 Chart.register(BarController, BarElement, CategoryScale, LinearScale, Legend, Tooltip);
 
-type Metric = "cost" | "tokens" | "requests" | "efficiency" | "share";
+type Metric = "spend" | "requests" | "costPerRequest" | "tokensPerRequest" | "tokenMix";
+type SortDirection = "asc" | "desc";
+export type CostPerRequestRank = "costPerRequest" | "totalCost" | "requests" | "pricePerMillion" | "avgTokens";
+export type TokensPerRequestRank = "total" | "input" | "output" | "reasoning" | "cacheRead";
+export type TokenMixRank = "totalTokens" | "inputShare" | "outputShare" | "reasoningShare" | "cacheReadShare" | "cost";
+export type TokenMixMode = "percent" | "absolute";
+
+export interface CostPerRequestRow {
+  model: string;
+  value: number;
+  costPerRequest: number;
+  totalCostUSD: number;
+  requests: number;
+  pricePerMillion: number;
+  avgTokensPerRequest: number;
+}
+
+export interface TokensPerRequestRow {
+  model: string;
+  value: number;
+  totalAvg: number;
+  inputAvg: number;
+  outputAvg: number;
+  reasoningAvg: number;
+  cacheReadAvg: number;
+}
+
+export interface TokenMixSegment {
+  label: "Input" | "Output" | "Reasoning" | "Cache read";
+  value: number;
+}
+
+export interface TokenMixRow {
+  model: string;
+  totalTokens: number;
+  totalCostUSD: number;
+  inputShare: number;
+  outputShare: number;
+  reasoningShare: number;
+  cacheReadShare: number;
+  segments: TokenMixSegment[];
+}
 
 const FILL_COLORS = [
   "rgba(196, 181, 253, 0.45)",
@@ -55,6 +96,144 @@ export const dateRanges: DateRange[] = [
   { label: "1y", fn: r => Date.now() - finiteDate(r.timeCreated) < 365 * 864e5 },
 ];
 
+export function buildCostPerRequestRows(
+  stats: ModelStats[],
+  rankBy: CostPerRequestRank,
+  direction: SortDirection,
+): CostPerRequestRow[] {
+  const rows = stats.map(s => {
+    const totalTokens = tokenTotal(s);
+    const totalCostUSD = s.totalCost / COST_SCALE;
+    const costPerRequest = safeDivide(totalCostUSD, s.requests);
+    const pricePerMillion = safeDivide(totalCostUSD, totalTokens / TPM_SCALE);
+    const avgTokensPerRequest = safeDivide(totalTokens, s.requests);
+    const row: CostPerRequestRow = {
+      model: s.model,
+      value: 0,
+      costPerRequest: round(costPerRequest, 10),
+      totalCostUSD: round(totalCostUSD, 10),
+      requests: s.requests,
+      pricePerMillion: round(pricePerMillion, 10),
+      avgTokensPerRequest: round(avgTokensPerRequest),
+    };
+    row.value = round(costPerRequestSortValue(row, rankBy), costRankPrecision(rankBy));
+    return row;
+  });
+  return sortRows(rows, row => costPerRequestSortValue(row, rankBy), direction);
+}
+
+export function buildTokensPerRequestRows(
+  stats: ModelStats[],
+  rankBy: TokensPerRequestRank,
+  direction: SortDirection,
+): TokensPerRequestRow[] {
+  const rows = stats.map(s => {
+    const inputAvg = safeDivide(s.inputTokens, s.requests);
+    const outputAvg = safeDivide(s.outputTokens, s.requests);
+    const reasoningAvg = safeDivide(s.reasoningTokens, s.requests);
+    const cacheReadAvg = safeDivide(s.cacheReadTokens, s.requests);
+    const totalAvg = inputAvg + outputAvg + reasoningAvg + cacheReadAvg;
+    const rankValues = { totalAvg, inputAvg, outputAvg, reasoningAvg, cacheReadAvg };
+    return {
+      model: s.model,
+      value: round(tokensPerRequestSortValue(rankValues, rankBy)),
+      totalAvg: round(totalAvg),
+      inputAvg: round(inputAvg),
+      outputAvg: round(outputAvg),
+      reasoningAvg: round(reasoningAvg),
+      cacheReadAvg: round(cacheReadAvg),
+    };
+  });
+  return sortRows(rows, row => tokensPerRequestSortValue(row, rankBy), direction);
+}
+
+export function buildTokenMixRows(
+  stats: ModelStats[],
+  rankBy: TokenMixRank,
+  direction: SortDirection,
+  mode: TokenMixMode,
+): TokenMixRow[] {
+  const rows = stats.map(s => {
+    const totalTokens = tokenTotal(s);
+    const totalCostUSD = s.totalCost / COST_SCALE;
+    const inputShare = percent(s.inputTokens, totalTokens);
+    const outputShare = percent(s.outputTokens, totalTokens);
+    const reasoningShare = percent(s.reasoningTokens, totalTokens);
+    const cacheReadShare = percent(s.cacheReadTokens, totalTokens);
+    const segmentValue = (tokens: number, share: number) => mode === "percent" ? share : tokens;
+    const segments: TokenMixSegment[] = [
+      { label: "Input", value: round(segmentValue(s.inputTokens, inputShare)) },
+      { label: "Output", value: round(segmentValue(s.outputTokens, outputShare)) },
+      { label: "Reasoning", value: round(segmentValue(s.reasoningTokens, reasoningShare)) },
+      { label: "Cache read", value: round(segmentValue(s.cacheReadTokens, cacheReadShare)) },
+    ];
+    return {
+      model: s.model,
+      totalTokens,
+      totalCostUSD: round(totalCostUSD),
+      inputShare,
+      outputShare,
+      reasoningShare,
+      cacheReadShare,
+      segments,
+    };
+  });
+  return sortRows(rows, row => tokenMixSortValue(row, rankBy), direction);
+}
+
+function tokenTotal(stats: ModelStats) {
+  return stats.inputTokens + stats.outputTokens + stats.reasoningTokens + stats.cacheReadTokens;
+}
+
+function safeDivide(numerator: number, denominator: number) {
+  return denominator > 0 ? numerator / denominator : 0;
+}
+
+function percent(part: number, total: number) {
+  return round(safeDivide(part, total) * 100);
+}
+
+function sortRows<T extends { model: string }>(rows: T[], valueFor: (row: T) => number, direction: SortDirection): T[] {
+  const multiplier = direction === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const diff = (valueFor(a) - valueFor(b)) * multiplier;
+    return diff || a.model.localeCompare(b.model);
+  });
+}
+
+function costPerRequestSortValue(row: CostPerRequestRow, rankBy: CostPerRequestRank) {
+  if (rankBy === "totalCost") return row.totalCostUSD;
+  if (rankBy === "requests") return row.requests;
+  if (rankBy === "pricePerMillion") return row.pricePerMillion;
+  if (rankBy === "avgTokens") return row.avgTokensPerRequest;
+  return row.costPerRequest;
+}
+
+function costRankPrecision(rankBy: CostPerRequestRank) {
+  return rankBy === "costPerRequest" || rankBy === "totalCost" || rankBy === "pricePerMillion" ? 10 : 6;
+}
+
+function tokensPerRequestSortValue(row: Pick<TokensPerRequestRow, "totalAvg" | "inputAvg" | "outputAvg" | "reasoningAvg" | "cacheReadAvg">, rankBy: TokensPerRequestRank) {
+  if (rankBy === "input") return row.inputAvg;
+  if (rankBy === "output") return row.outputAvg;
+  if (rankBy === "reasoning") return row.reasoningAvg;
+  if (rankBy === "cacheRead") return row.cacheReadAvg;
+  return row.totalAvg;
+}
+
+function tokenMixSortValue(row: TokenMixRow, rankBy: TokenMixRank) {
+  if (rankBy === "inputShare") return row.inputShare;
+  if (rankBy === "outputShare") return row.outputShare;
+  if (rankBy === "reasoningShare") return row.reasoningShare;
+  if (rankBy === "cacheReadShare") return row.cacheReadShare;
+  if (rankBy === "cost") return row.totalCostUSD;
+  return row.totalTokens;
+}
+
+function round(value: number, precision = 6) {
+  return +value.toFixed(precision);
+}
+
 export function renderCharts(
   getAllRecords: () => UsageRecord[],
   getStats: () => StatsResult | null,
@@ -65,7 +244,12 @@ export function renderCharts(
   if (!currentStats) return { refreshData: () => {} };
 
   let activeRange = 0;
-  let activeMetric: Metric = "cost";
+  let activeMetric: Metric = "spend";
+  let sortDirection: SortDirection = "desc";
+  let costPerRequestRank: CostPerRequestRank = "costPerRequest";
+  let tokensPerRequestRank: TokensPerRequestRank = "total";
+  let tokenMixRank: TokenMixRank = "totalTokens";
+  let tokenMixMode: TokenMixMode = "percent";
   let chartInst: any = null;
 
   if (!document.getElementById("oc-chart-dashboard-style")) {
@@ -74,6 +258,7 @@ export function renderCharts(
     chartStyle.textContent = `
     #oc-chart-dashboard { display: flex; flex-direction: column; gap: var(--space-4); }
     #oc-chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+    #oc-chart-options { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
     #oc-range-control { display: flex; flex-wrap: wrap; gap: var(--space-1); }
     .oc-select-control { display: flex; align-items: center; gap: var(--space-2); color: var(--color-text-muted); font-family: var(--font-mono); font-size: var(--font-size-sm); }
     #oc-chart-controls button,
@@ -88,6 +273,7 @@ export function renderCharts(
       #oc-chart-canvas-wrap { min-height: 340px; }
       .oc-select-control { width: 100%; justify-content: space-between; }
       #oc-chart-controls select { flex: 1; }
+      #oc-chart-options { width: 100%; }
     }
   `;
     document.head.appendChild(chartStyle);
@@ -96,6 +282,7 @@ export function renderCharts(
   const dashboard = el("div", { id: "oc-chart-dashboard" });
   const controls = el("div", { id: "oc-chart-controls" });
   const rangeControl = el("div", { id: "oc-range-control" });
+  const chartOptions = el("div", { id: "oc-chart-options" });
   const metricSelect = el("select") as HTMLSelectElement;
   const canvas = document.createElement("canvas");
   const chartWrap = el("div", { id: "oc-chart-canvas-wrap" });
@@ -118,23 +305,27 @@ export function renderCharts(
     return btn;
   });
 
-  addOption(metricSelect, "cost", "Cost");
-  addOption(metricSelect, "tokens", "Tokens");
+  addOption(metricSelect, "spend", "Spend Over Time");
   addOption(metricSelect, "requests", "Requests");
-  addOption(metricSelect, "efficiency", "Efficiency");
-  addOption(metricSelect, "share", "Share");
+  addOption(metricSelect, "costPerRequest", "Cost / Request");
+  addOption(metricSelect, "tokensPerRequest", "Avg Tokens / Request");
+  addOption(metricSelect, "tokenMix", "Token Mix");
   metricSelect.value = activeMetric;
   metricSelect.addEventListener("change", () => {
     activeMetric = metricSelect.value as Metric;
+    currentStats = getStats();
+    renderChartOptions();
     renderActiveChart();
   });
   controls.appendChild(rangeControl);
   controls.appendChild(el("label", { className: "oc-select-control" }, ["Metric", metricSelect]));
+  controls.appendChild(chartOptions);
   dashboard.appendChild(controls);
   dashboard.appendChild(chartCard);
   target.appendChild(dashboard);
 
   updateActiveRange();
+  renderChartOptions();
   renderActiveChart();
 
   function refreshData() {
@@ -144,41 +335,18 @@ export function renderCharts(
     try {
       let data: any;
 
-      if (activeMetric === "cost") {
+      if (activeMetric === "spend") {
         const { days, buckets } = dailyBuckets();
         data = { labels: days, datasets: modelDailyDatasets(days, buckets, recordCostUSD) };
-      } else if (activeMetric === "tokens") {
-        const { days, buckets } = dailyBuckets();
-        data = { labels: days, datasets: modelDailyDatasets(days, buckets, recordTokenTotal) };
       } else if (activeMetric === "requests") {
         const { days, buckets } = dailyBuckets();
         data = { labels: days, datasets: modelDailyDatasets(days, buckets, () => 1) };
-      } else if (activeMetric === "efficiency") {
-        const stats = modelStatsSorted("efficiency").filter(s => tokenTotal(s) > 0);
-        data = {
-          labels: stats.map(s => s.model),
-          datasets: [{
-            label: "$ / 1M Tokens",
-            data: stats.map(s => round((s.totalCost / COST_SCALE) / (tokenTotal(s) / TPM_SCALE))),
-            backgroundColor: FILL_COLORS[0],
-            borderColor: STROKE_COLORS[0],
-            borderWidth: 1,
-          }],
-        };
+      } else if (activeMetric === "costPerRequest") {
+        data = costPerRequestData();
+      } else if (activeMetric === "tokensPerRequest") {
+        data = tokensPerRequestData();
       } else {
-        const stats = modelStatsSorted("cost");
-        const total = currentStats.totalCostUSD;
-        data = {
-          labels: stats.map(s => s.model),
-          datasets: [{
-            label: "Cost Share",
-            data: stats.map(s => total > 0 ? round(((s.totalCost / COST_SCALE) / total) * 100) : 0),
-            backgroundColor: FILL_COLORS[1],
-            borderColor: STROKE_COLORS[1],
-            borderWidth: 1,
-            costUSD: stats.map(s => s.totalCost / COST_SCALE),
-          }],
-        };
+        data = tokenMixData();
       }
 
       chartInst.data = data;
@@ -197,6 +365,67 @@ export function renderCharts(
     select.appendChild(option);
   }
 
+  function renderChartOptions() {
+    chartOptions.replaceChildren();
+    if (activeMetric === "costPerRequest") {
+      chartOptions.appendChild(selectControl("Rank by", costPerRequestRank, [
+        ["costPerRequest", "Cost/request"],
+        ["totalCost", "Total cost"],
+        ["requests", "Requests"],
+        ["pricePerMillion", "$/1M tokens"],
+        ["avgTokens", "Avg tokens/request"],
+      ], value => { costPerRequestRank = value as CostPerRequestRank; }));
+      chartOptions.appendChild(directionControl());
+    } else if (activeMetric === "tokensPerRequest") {
+      chartOptions.appendChild(selectControl("Rank by", tokensPerRequestRank, [
+        ["total", "Total avg"],
+        ["input", "Input avg"],
+        ["output", "Output avg"],
+        ["reasoning", "Reasoning avg"],
+        ["cacheRead", "Cache-read avg"],
+      ], value => { tokensPerRequestRank = value as TokensPerRequestRank; }));
+      chartOptions.appendChild(directionControl());
+    } else if (activeMetric === "tokenMix") {
+      chartOptions.appendChild(selectControl("Mode", tokenMixMode, [
+        ["percent", "Percent"],
+        ["absolute", "Absolute"],
+      ], value => { tokenMixMode = value as TokenMixMode; }));
+      chartOptions.appendChild(selectControl("Rank by", tokenMixRank, [
+        ["totalTokens", "Total tokens"],
+        ["inputShare", "Input share"],
+        ["outputShare", "Output share"],
+        ["reasoningShare", "Reasoning share"],
+        ["cacheReadShare", "Cache-read share"],
+        ["cost", "Cost"],
+      ], value => { tokenMixRank = value as TokenMixRank; }));
+      chartOptions.appendChild(directionControl());
+    }
+  }
+
+  function selectControl(
+    label: string,
+    currentValue: string,
+    options: [string, string][],
+    onChange: (value: string) => void,
+  ) {
+    const select = el("select") as HTMLSelectElement;
+    for (const [value, text] of options) addOption(select, value, text);
+    select.value = currentValue;
+    select.addEventListener("change", () => {
+      onChange(select.value);
+      currentStats = getStats();
+      renderActiveChart();
+    });
+    return el("label", { className: "oc-select-control" }, [label, select]);
+  }
+
+  function directionControl() {
+    return selectControl("Direction", sortDirection, [
+      ["desc", "High first"],
+      ["asc", "Low first"],
+    ], value => { sortDirection = value as SortDirection; });
+  }
+
   function updateActiveRange() {
     for (let i = 0; i < filterBtns.length; i++) {
       filterBtns[i].classList.toggle("active", i === activeRange);
@@ -207,11 +436,11 @@ export function renderCharts(
     if (!currentStats) return;
     if (chartInst) chartInst.destroy();
     try {
-      if (activeMetric === "cost") chartInst = renderCostChart();
-      else if (activeMetric === "tokens") chartInst = renderTokensChart();
+      if (activeMetric === "spend") chartInst = renderSpendChart();
       else if (activeMetric === "requests") chartInst = renderRequestsChart();
-      else if (activeMetric === "efficiency") chartInst = renderEfficiencyChart();
-      else chartInst = renderShareChart();
+      else if (activeMetric === "costPerRequest") chartInst = renderCostPerRequestChart();
+      else if (activeMetric === "tokensPerRequest") chartInst = renderTokensPerRequestChart();
+      else chartInst = renderTokenMixChart();
     } catch (e) {
       console.warn("Chart render error:", e);
     }
@@ -229,19 +458,13 @@ export function renderCharts(
     return (r.cost || 0) / COST_SCALE;
   }
 
-  function recordTokenTotal(r: UsageRecord) {
-    return (r.inputTokens || 0) + (r.outputTokens || 0) + (r.reasoningTokens || 0) + (r.cacheReadTokens || 0);
+  function modelStats() {
+    return Object.values(currentStats!.modelStats);
   }
 
-  function modelStatsSorted(sortBy: "cost" | "efficiency" = "cost") {
+  function modelStatsSorted() {
     const stats = Object.values(currentStats!.modelStats);
-    return stats.sort((a, b) => sortValue(b, sortBy) - sortValue(a, sortBy));
-  }
-
-  function sortValue(stats: ModelStats, sortBy: "cost" | "efficiency") {
-    if (sortBy === "cost") return stats.totalCost;
-    const tokens = stats.inputTokens + stats.outputTokens + stats.reasoningTokens + stats.cacheReadTokens;
-    return tokens > 0 ? (stats.totalCost / COST_SCALE) / (tokens / TPM_SCALE) : 0;
+    return stats.sort((a, b) => b.totalCost - a.totalCost);
   }
 
   function orderedModels() {
@@ -275,22 +498,13 @@ export function renderCharts(
     }));
   }
 
-  function renderCostChart() {
+  function renderSpendChart() {
     const { days, buckets } = dailyBuckets();
     const datasets = modelDailyDatasets(days, buckets, recordCostUSD);
     return new Chart(canvas, {
       type: "bar",
       data: { labels: days, datasets: datasets as any },
       options: dailyOptions("usd"),
-    });
-  }
-
-  function renderTokensChart() {
-    const { days, buckets } = dailyBuckets();
-    return new Chart(canvas, {
-      type: "bar",
-      data: { labels: days, datasets: modelDailyDatasets(days, buckets, recordTokenTotal) as any },
-      options: dailyOptions("tokens"),
     });
   }
 
@@ -303,46 +517,76 @@ export function renderCharts(
     });
   }
 
-  function renderEfficiencyChart() {
-    const stats = modelStatsSorted("efficiency").filter(s => tokenTotal(s) > 0);
+  function renderCostPerRequestChart() {
     return new Chart(canvas, {
       type: "bar",
-      data: {
-        labels: stats.map(s => s.model),
-        datasets: [{
-          label: "$ / 1M Tokens",
-          data: stats.map(s => round((s.totalCost / COST_SCALE) / (tokenTotal(s) / TPM_SCALE))),
-          backgroundColor: FILL_COLORS[0],
-          borderColor: STROKE_COLORS[0],
-          borderWidth: 1,
-        }],
-      } as any,
-      options: horizontalOptions("usd"),
+      data: costPerRequestData() as any,
+      options: horizontalOptions("usdPerRequest"),
     });
   }
 
-  function renderShareChart() {
-    const stats = modelStatsSorted("cost");
-    const total = currentStats!.totalCostUSD;
+  function renderTokensPerRequestChart() {
     return new Chart(canvas, {
       type: "bar",
-      data: {
-        labels: stats.map(s => s.model),
-        datasets: [{
-          label: "Cost Share",
-          data: stats.map(s => total > 0 ? round(((s.totalCost / COST_SCALE) / total) * 100) : 0),
-          backgroundColor: FILL_COLORS[1],
-          borderColor: STROKE_COLORS[1],
-          borderWidth: 1,
-          costUSD: stats.map(s => s.totalCost / COST_SCALE),
-        }],
-      } as any,
-      options: horizontalOptions("percent"),
+      data: tokensPerRequestData() as any,
+      options: horizontalOptions("tokens", true),
     });
   }
 
-  function tokenTotal(stats: ModelStats) {
-    return stats.inputTokens + stats.outputTokens + stats.reasoningTokens + stats.cacheReadTokens;
+  function renderTokenMixChart() {
+    return new Chart(canvas, {
+      type: "bar",
+      data: tokenMixData() as any,
+      options: horizontalOptions(tokenMixMode === "percent" ? "percent" : "tokens", true),
+    });
+  }
+
+  function costPerRequestData() {
+    const rows = buildCostPerRequestRows(modelStats(), costPerRequestRank, sortDirection);
+    return {
+      labels: rows.map(r => r.model),
+      datasets: [{
+        label: "$ / Request",
+        data: rows.map(r => r.costPerRequest),
+        backgroundColor: FILL_COLORS[0],
+        borderColor: STROKE_COLORS[0],
+        borderWidth: 1,
+      }],
+    };
+  }
+
+  function tokensPerRequestData() {
+    const rows = buildTokensPerRequestRows(modelStats(), tokensPerRequestRank, sortDirection);
+    return stackedTokenData(rows.map(r => r.model), [
+      ["Input", rows.map(r => r.inputAvg)],
+      ["Output", rows.map(r => r.outputAvg)],
+      ["Reasoning", rows.map(r => r.reasoningAvg)],
+      ["Cache read", rows.map(r => r.cacheReadAvg)],
+    ]);
+  }
+
+  function tokenMixData() {
+    const rows = buildTokenMixRows(modelStats(), tokenMixRank, sortDirection, tokenMixMode);
+    return stackedTokenData(rows.map(r => r.model), [
+      ["Input", rows.map(r => r.segments[0].value)],
+      ["Output", rows.map(r => r.segments[1].value)],
+      ["Reasoning", rows.map(r => r.segments[2].value)],
+      ["Cache read", rows.map(r => r.segments[3].value)],
+    ]);
+  }
+
+  function stackedTokenData(labels: string[], series: [string, number[]][]) {
+    return {
+      labels,
+      datasets: series.map(([label, data], i) => ({
+        label,
+        data,
+        backgroundColor: FILL_COLORS[i % FILL_COLORS.length],
+        borderColor: STROKE_COLORS[i % STROKE_COLORS.length],
+        borderWidth: 1,
+        stack: "main",
+      })),
+    };
   }
 
   function dailyOptions(unit: "usd" | "tokens" | "count") {
@@ -359,7 +603,7 @@ export function renderCharts(
     } as any;
   }
 
-  function horizontalOptions(unit: "usd" | "percent") {
+  function horizontalOptions(unit: "usd" | "tokens" | "percent" | "usdPerRequest", stacked = false) {
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -367,13 +611,13 @@ export function renderCharts(
       indexAxis: "y",
       plugins: commonPlugins(unit),
       scales: {
-        x: { ticks: tickStyle({ callback: tickFormatter(unit) }), grid: { color: chartColor("grid") }, border: { color: chartColor("border") } },
+        x: { stacked, ticks: tickStyle({ callback: tickFormatter(unit) }), grid: { color: chartColor("grid") }, border: { color: chartColor("border") } },
         y: { ticks: tickStyle(), grid: { display: false }, border: { color: chartColor("border") } },
       },
     } as any;
   }
 
-  function commonPlugins(unit: "usd" | "tokens" | "count" | "percent") {
+  function commonPlugins(unit: "usd" | "tokens" | "count" | "percent" | "usdPerRequest") {
     return {
       legend: {
         position: "bottom",
@@ -394,14 +638,14 @@ export function renderCharts(
     };
   }
 
-  function tooltipLabel(ctx: any, unit: "usd" | "tokens" | "count" | "percent") {
+  function tooltipLabel(ctx: any, unit: "usd" | "tokens" | "count" | "percent" | "usdPerRequest") {
     const label = ctx.dataset.label || "Value";
     const value = Number(ctx.raw || 0);
     if (unit === "usd") return label + ": " + formatUSD(value, value >= 10 ? 2 : 4);
+    if (unit === "usdPerRequest") return label + ": " + formatUSD(value, value >= 10 ? 2 : 4) + "/request";
     if (unit === "tokens") return label + ": " + Math.round(value).toLocaleString() + " tokens";
     if (unit === "count") return label + ": " + Math.round(value).toLocaleString() + " requests";
-    const costUSD = Array.isArray(ctx.dataset.costUSD) ? ctx.dataset.costUSD[ctx.dataIndex] : null;
-    return label + ": " + value.toFixed(1) + "%" + (typeof costUSD === "number" ? " (" + formatUSD(costUSD) + ")" : "");
+    return label + ": " + value.toFixed(1) + "%";
   }
 
   function tickStyle(extra: Record<string, any> = {}) {
@@ -412,10 +656,10 @@ export function renderCharts(
     };
   }
 
-  function tickFormatter(unit: "usd" | "tokens" | "count" | "percent") {
+  function tickFormatter(unit: "usd" | "tokens" | "count" | "percent" | "usdPerRequest") {
     return (v: number | string) => {
       const value = Number(v);
-      if (unit === "usd") return "$" + compactNumber(value);
+      if (unit === "usd" || unit === "usdPerRequest") return "$" + compactNumber(value);
       if (unit === "tokens") return compactNumber(value);
       if (unit === "percent") return value + "%";
       return compactNumber(value);
@@ -426,10 +670,6 @@ export function renderCharts(
     if (Math.abs(value) >= 1_000_000) return (value / 1_000_000).toFixed(1) + "M";
     if (Math.abs(value) >= 1_000) return (value / 1_000).toFixed(1) + "K";
     return Number.isInteger(value) ? String(value) : value.toFixed(2);
-  }
-
-  function round(value: number) {
-    return +value.toFixed(6);
   }
 
   function fontFamily() {
