@@ -2,18 +2,9 @@ const esbuild = require("esbuild");
 const fs = require("fs");
 const path = require("path");
 const pkg = require("./package.json");
+const { buildUserscriptHeader, buildMetaFile } = require("./src/scripts/build-meta");
 
-const USERSCRIPT_BANNER = `// ==UserScript==
-// @name         OpenCode Go Stats
-// @namespace    https://github.com/BubbleBuffer/opencode-go-stats
-// @version      ${pkg.version}
-// @description  Per-model token/cost analytics for opencode.ai workspace usage
-// @author       BubbleBuffer
-// @match        https://opencode.ai/*
-// @icon         https://opencode.ai/favicon.ico
-// @grant        none
-// @run-at       document-end
-// ==/UserScript==`;
+const USERSCRIPT_BANNER = buildUserscriptHeader(pkg);
 
 async function build() {
   fs.mkdirSync("dist/extension", { recursive: true });
@@ -54,6 +45,10 @@ async function build() {
     footer: { js: "void 0;" },
   });
   console.log("Built dist/opencode-stats.user.js");
+
+  // Userscript metadata-only file (for auto-update polling)
+  fs.writeFileSync("dist/opencode-stats.meta.js", buildMetaFile(pkg), "utf-8");
+  console.log("Built dist/opencode-stats.meta.js");
 
   // Copy extension manifest
   fs.copyFileSync("extension/manifest.json", "dist/extension/manifest.json");

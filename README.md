@@ -81,6 +81,7 @@ The extension runs on `https://opencode.ai/workspace/*/usage`.
 ### Userscript
 
 Install `dist/opencode-stats.user.js` with [Tampermonkey](https://www.tampermonkey.net/), [Violentmonkey](https://violentmonkey.github.io/), or another userscript manager.
+The userscript supports auto-update: your manager will automatically check for new versions and prompt you to update when a new release is published.
 
 The userscript runs on the same usage pages as the extension and renders the same dashboard.
 
@@ -98,9 +99,10 @@ npm run build
 `npm run build` produces:
 
 | Output | Source entry | Purpose |
-|---|---|---|
+|---|---|---|---|
 | `dist/extension/content.js` | `src/entries/extension.ts` | Browser extension content script. |
 | `dist/opencode-stats.user.js` | `src/entries/extension.ts` | Userscript dashboard. |
+| `dist/opencode-stats.meta.js` | — | Userscript metadata for auto-update polling. |
 | `dist/pull-stats.js` | `src/entries/console.ts` | Console-only report. |
 
 All output goes to `dist/`.
