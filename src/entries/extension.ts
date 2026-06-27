@@ -85,7 +85,6 @@ async function main() {
     root.appendChild(buildPricingTable(currentStats.modelPrices));
     root.appendChild(buildSummaryTable(
       currentStats.modelStats,
-      currentStats.modelPrices,
       currentStats.totalTokens,
       currentStats.totalCostUSD,
     ));

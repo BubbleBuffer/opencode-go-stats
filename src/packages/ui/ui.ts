@@ -1,34 +1,6 @@
 import type { ModelPrices, ModelStats, StatsResult } from "../core/types";
 import { COST_SCALE, TPM_SCALE } from "../core/constants";
 
-type SummaryPricingField = "inputTokens" | "outputTokens" | "cacheReadTokens";
-type SummaryPricingColumn = { field: SummaryPricingField; header: string };
-
-const SUMMARY_PRICING_COLUMNS: SummaryPricingColumn[] = [
-  { field: "inputTokens", header: "In $/1M" },
-  { field: "outputTokens", header: "Out $/1M" },
-  { field: "cacheReadTokens", header: "Cache Rd $/1M" },
-];
-
-export function summaryPricingColumns(
-  modelStats: Record<string, ModelStats>,
-  modelPrices: Record<string, ModelPrices>,
-): SummaryPricingColumn[] {
-  return SUMMARY_PRICING_COLUMNS.filter(col =>
-    Object.values(modelStats).some(s => (modelPrices[s.model]?.[col.field] || 0) > 0),
-  );
-}
-
-export function summaryPricingCells(
-  prices: ModelPrices | undefined,
-  columns: SummaryPricingColumn[],
-): string[] {
-  return columns.map(col => {
-    const value = prices?.[col.field];
-    return value ? "$" + value.toFixed(4) : "-";
-  });
-}
-
 export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs?: Record<string, any>, children?: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (attrs) {
@@ -157,17 +129,12 @@ export function buildPricingTable(modelPrices: Record<string, ModelPrices>): HTM
 
 export function buildSummaryTable(
   modelStats: Record<string, ModelStats>,
-  modelPrices: Record<string, ModelPrices>,
   totalTokens: number,
   totalCostUSD: number,
 ): HTMLElement {
-  const cols = ["Model", "Requests", "Input Tok", "Output Tok", "Reason Tok", "Cache Read", "Cost (USD)", "$/1M Tok"];
-  const pricingColumns = summaryPricingColumns(modelStats, modelPrices);
+  const cols = ["Model", "Requests", "Input Tok", "Output Tok", "Reason Tok", "Cache Read", "Cost (USD)"];
   const rows = Object.values(modelStats).map(s => {
-    const tot = s.inputTokens + s.outputTokens + s.reasoningTokens + s.cacheReadTokens;
     const costUSD = s.totalCost / COST_SCALE;
-    const ppm = tot > 0 ? "$" + (costUSD / (tot / TPM_SCALE)).toFixed(4) : "N/A";
-    const ep = modelPrices[s.model];
     const row: (string | Node)[] = [
       s.model,
       String(s.requests),
@@ -176,17 +143,14 @@ export function buildSummaryTable(
       s.reasoningTokens.toLocaleString(),
       s.cacheReadTokens.toLocaleString(),
       formatUSD(costUSD),
-      ppm,
     ];
-    row.push(...summaryPricingCells(ep, pricingColumns));
     return row;
   });
 
-  const fullCols = [...cols, ...pricingColumns.map(col => col.header)];
   return buildSection(
     "Per-Model Summary",
     totalTokens.toLocaleString() + " total tokens — " + formatUSD(totalCostUSD) + " total cost",
     rows,
-    fullCols,
+    cols,
   );
 }
